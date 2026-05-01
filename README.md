@@ -44,7 +44,7 @@ Start Session → Quiz → Reward → Progress
 ### 1. Clone the repository
 
 ```
-git clone https://github.com/YOUR-USERNAME/answer-to-unlock.git
+https://github.com/samarthprabhu2007-art/SAMSUNG-HACKATHON-.git
 ```
 
 ### 2. Go to project folder
