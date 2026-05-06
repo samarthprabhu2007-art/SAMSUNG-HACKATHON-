@@ -11,6 +11,14 @@ import Progress from "./pages/Progress";
 
 function App() {
   const [page, setPage] = useState("login");
+  const [quiz, setQuiz] = useState(null);
+  const [gradeResult, setGradeResult] = useState(null);
+  const [rewardResult, setRewardResult] = useState(null);
+  const [sessionInfo, setSessionInfo] = useState({
+    sessionTimeMinutes: 45,
+    streakMultiplier: 1,
+    userId: "test-user",
+  });
 
   return (
     <>
@@ -18,9 +26,32 @@ function App() {
       {page === "home" && <Home setPage={setPage} />}
       {page === "profile" && <Profile setPage={setPage} />}
 
-      {page === "start" && <StartSession />}
-      {page === "quiz" && <Quiz />}
-      {page === "rewards" && <Rewards />}
+      {page === "start" && (
+        <StartSession
+          setPage={setPage}
+          setQuiz={setQuiz}
+          setGradeResult={setGradeResult}
+          setRewardResult={setRewardResult}
+          sessionInfo={sessionInfo}
+          setSessionInfo={setSessionInfo}
+        />
+      )}
+      {page === "quiz" && (
+        <Quiz
+          setPage={setPage}
+          quiz={quiz}
+          setGradeResult={setGradeResult}
+          setRewardResult={setRewardResult}
+          sessionInfo={sessionInfo}
+        />
+      )}
+      {page === "rewards" && (
+        <Rewards
+          setPage={setPage}
+          gradeResult={gradeResult}
+          rewardResult={rewardResult}
+        />
+      )}
       {page === "progress" && <Progress />}
     </>
   );
