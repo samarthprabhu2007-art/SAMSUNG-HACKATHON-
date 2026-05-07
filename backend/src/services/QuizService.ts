@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, type Part } from "@google/generative-ai";
 import dotenv from "dotenv";
 
 dotenv.config({ quiet: true });
@@ -41,6 +41,12 @@ export interface Quiz {
   questions: Question[];
   generatedAt: string;
   topic: string;
+}
+
+export interface PdfStudyMaterial {
+  data: string;
+  mimeType: "application/pdf";
+  name?: string;
 }
 
 const QUIZ_SYSTEM_PROMPT = `You are a strict quiz generator for a productivity app called GrindGuard.
@@ -239,21 +245,47 @@ function validateGeneratedQuiz(value: unknown): Omit<Quiz, "generatedAt"> {
   };
 }
 
-export async function generateQuiz(studyData: string): Promise<Quiz> {
-  if (countWords(studyData) < 300) {
+export async function generateQuiz(
+  studyData: string,
+  pdfStudyMaterial?: PdfStudyMaterial
+): Promise<Quiz> {
+  if (!pdfStudyMaterial && countWords(studyData) < 300) {
     throw new Error(
       "Study material is too short. Please provide at least 300 words for a meaningful quiz."
     );
   }
 
-  const prompt = `${QUIZ_SYSTEM_PROMPT}\n\nHere is the study material:\n\n${studyData}`;
+  if (pdfStudyMaterial && pdfStudyMaterial.data.trim() === "") {
+    throw new Error("Uploaded PDF is empty. Please choose a valid PDF file.");
+  }
+
+  const prompt = pdfStudyMaterial
+    ? `${QUIZ_SYSTEM_PROMPT}\n\nRead the attached PDF study material${
+        pdfStudyMaterial.name ? ` named "${pdfStudyMaterial.name}"` : ""
+      } and generate the quiz from ONLY that PDF. ${
+        studyData.trim()
+          ? `Additional notes from the student:\n\n${studyData}`
+          : ""
+      }`
+    : `${QUIZ_SYSTEM_PROMPT}\n\nHere is the study material:\n\n${studyData}`;
   const genAI = getGeminiClient();
   let lastError: unknown;
 
   for (const modelName of QUIZ_MODEL_NAMES) {
     try {
       const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
+      const parts: Array<string | Part> = pdfStudyMaterial
+        ? [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: pdfStudyMaterial.mimeType,
+                data: pdfStudyMaterial.data,
+              },
+            },
+          ]
+        : [prompt];
+      const result = await model.generateContent(parts);
       const rawText = result.response.text();
       const parsed = parseQuizJson(rawText);
 

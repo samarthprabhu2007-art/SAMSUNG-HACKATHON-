@@ -1,28 +1,83 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE = "http://localhost:3000";
+const QUIZ_SECONDS = 10 * 60;
 
-function Quiz({ setPage, quiz, setGradeResult, setRewardResult, sessionInfo }) {
+function formatTime(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function dateKey(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function getStreakDays(history) {
+  const completedDays = new Set(history.map((entry) => dateKey(entry.completedAt)));
+  const cursor = new Date();
+  let streak = 0;
+
+  while (completedDays.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
+
+function getStreakMultiplier(history) {
+  const streakDays = getStreakDays(history);
+  return 1 + Math.min(streakDays, 10) * 0.1;
+}
+
+async function readProgressHistory(userId) {
+  const response = await fetch(`${API_BASE}/progress/${userId}`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Could not load progress history.");
+  }
+
+  return data.history || [];
+}
+
+async function saveProgressEntry({ quiz, gradeResult, rewardResult, sessionInfo, streakMultiplier }) {
+  const response = await fetch(`${API_BASE}/progress/${sessionInfo.userId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      topic: quiz.topic,
+      sessionTimeMinutes: sessionInfo.sessionTimeMinutes,
+      streakMultiplier,
+      score: gradeResult.totalScore,
+      maxScore: gradeResult.maxPossibleScore,
+      accuracy: gradeResult.accuracy,
+      epEarned: rewardResult.epEarned,
+      tier: rewardResult.tier,
+      breakdown: gradeResult.breakdown,
+    }),
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Could not save progress to OpenClaw.");
+  }
+
+  return data.entry;
+}
+
+function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, sessionInfo, onLogout }) {
   const [answers, setAnswers] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(QUIZ_SECONDS);
+  const submittedRef = useRef(false);
 
   const answeredCount = useMemo(
     () => Object.values(answers).filter(Boolean).length,
     [answers]
   );
-
-  if (!quiz) {
-    return (
-      <div style={emptyContainer}>
-        <h1 style={emptyTitle}>No quiz loaded</h1>
-        <p style={emptyText}>Start a study session first to generate questions.</p>
-        <button onClick={() => setPage("start")} style={primaryButton}>
-          Start Session
-        </button>
-      </div>
-    );
-  }
 
   const handleAnswer = (questionId, option) => {
     setAnswers((current) => ({
@@ -31,7 +86,12 @@ function Quiz({ setPage, quiz, setGradeResult, setRewardResult, sessionInfo }) {
     }));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
+    if (!quiz || submittedRef.current) {
+      return;
+    }
+
+    submittedRef.current = true;
     setError("");
     setLoading(true);
 
@@ -47,13 +107,19 @@ function Quiz({ setPage, quiz, setGradeResult, setRewardResult, sessionInfo }) {
         throw new Error(gradeData.error || "Could not grade quiz.");
       }
 
+      const progressHistory = await readProgressHistory(sessionInfo.userId);
+      const streakMultiplier = Math.max(
+        sessionInfo.streakMultiplier,
+        getStreakMultiplier(progressHistory)
+      );
+
       const rewardResponse = await fetch(`${API_BASE}/rewards/calculate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionTimeMinutes: sessionInfo.sessionTimeMinutes,
           accuracy: gradeData.gradeResult.accuracy,
-          streakMultiplier: sessionInfo.streakMultiplier,
+          streakMultiplier,
           gradeResult: gradeData.gradeResult,
           userId: sessionInfo.userId,
         }),
@@ -64,27 +130,86 @@ function Quiz({ setPage, quiz, setGradeResult, setRewardResult, sessionInfo }) {
         throw new Error(rewardData.error || "Could not calculate rewards.");
       }
 
+      const savedEntry = await saveProgressEntry({
+        quiz,
+        gradeResult: gradeData.gradeResult,
+        rewardResult: rewardData.rewardResult,
+        sessionInfo,
+        streakMultiplier,
+      });
       setGradeResult(gradeData.gradeResult);
       setRewardResult({
         ...rewardData.rewardResult,
-        updatedBalance: rewardData.updatedBalance,
+        updatedBalance: savedEntry.epBalance,
+        streakMultiplier,
       });
+      setQuiz(null);
       setPage("rewards");
     } catch (err) {
+      submittedRef.current = false;
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [answers, quiz, sessionInfo, setGradeResult, setPage, setQuiz, setRewardResult]);
+
+  useEffect(() => {
+    if (!quiz || submittedRef.current) {
+      return undefined;
+    }
+
+    const timer = setInterval(() => {
+      setTimeLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [quiz]);
+
+  useEffect(() => {
+    if (timeLeft === 0 && quiz && !submittedRef.current) {
+      handleSubmit();
+    }
+  }, [handleSubmit, quiz, timeLeft]);
+
+  if (!quiz) {
+    return (
+      <div style={emptyContainer}>
+        <h1 style={emptyTitle}>No quiz loaded</h1>
+        <p style={emptyText}>Start a study session first to generate questions.</p>
+        <div style={emptyActions}>
+          <button onClick={() => setPage("home")} style={secondaryButton}>
+            Home
+          </button>
+          <button onClick={() => setPage("start")} style={primaryButton}>
+            Start Session
+          </button>
+          <button onClick={onLogout} style={logoutButton}>
+            Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={container}>
       <div style={topBar}>
-        <button onClick={() => setPage("start")} style={secondaryButton}>
-          Back
-        </button>
+        <div style={navActions}>
+          <button onClick={() => setPage("home")} style={secondaryButton}>
+            Home
+          </button>
+          <button onClick={() => setPage("start")} style={secondaryButton}>
+            Back
+          </button>
+          <button onClick={onLogout} style={logoutButton}>
+            Logout
+          </button>
+        </div>
         <div style={headerMeta}>
           <strong>{quiz.topic}</strong>
+          <span style={timeLeft <= 60 ? dangerTimer : timerBadge}>
+            Quiz Timer {formatTime(timeLeft)}
+          </span>
           <span>{answeredCount} / {quiz.questions.length} answered</span>
         </div>
       </div>
@@ -136,7 +261,11 @@ function Quiz({ setPage, quiz, setGradeResult, setRewardResult, sessionInfo }) {
         {error && <p style={errorText}>{error}</p>}
 
         <div style={submitBar}>
-          <span style={hint}>Unanswered questions count as wrong.</span>
+          <span style={hint}>
+            {timeLeft === 0
+              ? "Time is up. Submitting your quiz..."
+              : "Unanswered questions count as wrong."}
+          </span>
           <button onClick={handleSubmit} disabled={loading} style={primaryButton}>
             {loading ? "Submitting..." : "Submit Quiz"}
           </button>
@@ -187,10 +316,39 @@ const topBar = {
   borderBottom: "1px solid #334155",
 };
 
+const navActions = {
+  display: "flex",
+  gap: "10px",
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
 const headerMeta = {
   display: "flex",
   gap: "16px",
   color: "#cbd5e1",
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const timerBadge = {
+  color: "#bfdbfe",
+  background: "#0f172a",
+  border: "1px solid #38bdf8",
+  borderRadius: "999px",
+  padding: "7px 10px",
+  fontWeight: 700,
+};
+
+const dangerTimer = {
+  ...timerBadge,
+  color: "#fecaca",
+  borderColor: "#ef4444",
+};
+
+const emptyActions = {
+  display: "flex",
+  gap: "10px",
 };
 
 const main = {
@@ -309,6 +467,11 @@ const secondaryButton = {
   background: "#1e293b",
   color: "white",
   cursor: "pointer",
+};
+
+const logoutButton = {
+  ...secondaryButton,
+  background: "#7f1d1d",
 };
 
 const errorText = {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-function Profile({ setPage }) {
+function Profile({ setPage, onLogout }) {
   const [name, setName] = useState(localStorage.getItem("userName") || "");
   const [email, setEmail] = useState(localStorage.getItem("userEmail") || "");
 
@@ -19,6 +19,14 @@ function Profile({ setPage }) {
   return (
     <div style={container}>
       <div style={card}>
+        <div style={navRow}>
+          <button onClick={() => setPage("home")} style={smallBtn}>
+            Home
+          </button>
+          <button onClick={onLogout} style={logoutBtn}>
+            Logout
+          </button>
+        </div>
 
         <h2 style={title}>Edit Profile</h2>
 
@@ -72,6 +80,27 @@ const card = {
 
 const title = {
   marginBottom: "20px"
+};
+
+const navRow = {
+  display: "flex",
+  gap: "10px",
+  justifyContent: "space-between",
+  marginBottom: "18px"
+};
+
+const smallBtn = {
+  padding: "8px 12px",
+  borderRadius: "8px",
+  border: "1px solid #475569",
+  background: "#0f172a",
+  color: "white",
+  cursor: "pointer"
+};
+
+const logoutBtn = {
+  ...smallBtn,
+  background: "#7f1d1d"
 };
 
 const input = {
