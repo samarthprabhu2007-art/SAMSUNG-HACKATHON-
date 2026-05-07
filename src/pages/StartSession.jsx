@@ -1,68 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = "http://localhost:3000";
-const TOTAL_QUESTIONS = 5;
-
-const fallbackQuestions = [
-  {
-    question: "What are you trying to get better at right now?",
-    options: [
-      "Programming and building apps",
-      "Math or problem solving",
-      "Science concepts",
-      "Communication and writing",
-      "I am still exploring",
-    ],
-  },
-  {
-    question: "How would you describe your current skill level?",
-    options: [
-      "Beginner: I need fundamentals",
-      "Intermediate: I can solve familiar tasks",
-      "Advanced: I want harder edge cases",
-      "Rusty: I learned it before but need revision",
-      "Mixed: it depends on the topic",
-    ],
-  },
-  {
-    question: "What kind of quiz would help you most today?",
-    options: [
-      "Definitions and memory checks",
-      "Scenario-based application questions",
-      "Hard reasoning questions",
-      "A balanced mix",
-      "Quick diagnosis of weak areas",
-    ],
-  },
-  {
-    question: "Where do you usually get stuck?",
-    options: [
-      "Understanding the first explanation",
-      "Remembering details later",
-      "Applying concepts to new problems",
-      "Connecting multiple ideas",
-      "Staying focused long enough",
-    ],
-  },
-  {
-    question: "What should this session optimize for?",
-    options: [
-      "Confidence with basics",
-      "Exam readiness",
-      "Project-building ability",
-      "Speed and accuracy",
-      "Deep understanding",
-    ],
-  },
-];
-
-const fallbackProfile = {
-  interests: "focused learning and practical improvement",
-  skillLevel: "beginner | intermediate",
-  learningStyle: "active recall with explanations and scenario practice",
-  summary:
-    "The learner benefits from clear fundamentals, practical examples, and a balanced quiz that reveals weak areas.",
-};
+const TOTAL_ONBOARDING_QUESTIONS = 5;
 
 function StartSession({
   setPage,
@@ -73,39 +12,71 @@ function StartSession({
   setSessionInfo,
   onLogout,
 }) {
+  const userId = sessionInfo.userId || localStorage.getItem("userId") || "guest-user";
+  const profileKey = `aiOnboardingProfile:${userId}`;
+
+  const [mode, setMode] = useState("loading");
   const [question, setQuestion] = useState(null);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState([]);
   const [history, setHistory] = useState([]);
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const stepNumber = history.length + 1;
   const progress = useMemo(
-    () => Math.min(100, Math.round((history.length / TOTAL_QUESTIONS) * 100)),
+    () => Math.round((history.length / TOTAL_ONBOARDING_QUESTIONS) * 100),
     [history.length]
   );
 
   useEffect(() => {
-    loadFirstQuestion();
-  }, []);
+    const savedProfile = localStorage.getItem(profileKey);
 
-  const loadFirstQuestion = async () => {
+    if (savedProfile) {
+      const parsedProfile = JSON.parse(savedProfile);
+      setProfile(parsedProfile);
+      setMode("chat");
+      requestChatReply(parsedProfile, [], "Start a new study coaching session for me.");
+      return;
+    }
+
+    startOnboarding();
+  }, [profileKey]);
+
+  const startOnboarding = async () => {
+    setMode("onboarding");
     setLoading(true);
     setError("");
 
     try {
-      const data = await postJson("/start");
-      setQuestion(normalizeQuestion(data, 0));
-    } catch {
-      setQuestion(fallbackQuestions[0]);
+      const data = await postJson("/start", {
+        user: {
+          id: userId,
+          name: localStorage.getItem("userName") || "Learner",
+          email: localStorage.getItem("userEmail") || "",
+        },
+      });
+
+      setQuestion(normalizeQuestion(data));
+    } catch (err) {
+      setError(err.message);
+      setQuestion(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNext = async () => {
-    if (!selected || !question) {
+  const toggleAnswer = (option) => {
+    setSelected((current) =>
+      current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option]
+    );
+  };
+
+  const handleNextQuestion = async () => {
+    if (!question || selected.length === 0) {
       return;
     }
 
@@ -113,15 +84,15 @@ function StartSession({
       ...history,
       {
         question: question.question,
-        answer: selected,
+        answers: selected,
       },
     ];
 
     setHistory(updatedHistory);
-    setSelected("");
+    setSelected([]);
     setError("");
 
-    if (updatedHistory.length >= TOTAL_QUESTIONS) {
+    if (updatedHistory.length >= TOTAL_ONBOARDING_QUESTIONS) {
       await finishOnboarding(updatedHistory);
       return;
     }
@@ -130,9 +101,9 @@ function StartSession({
 
     try {
       const data = await postJson("/next", { history: updatedHistory });
-      setQuestion(normalizeQuestion(data, updatedHistory.length, updatedHistory));
-    } catch {
-      setQuestion(buildAdaptiveFallbackQuestion(updatedHistory));
+      setQuestion(normalizeQuestion(data));
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -140,132 +111,231 @@ function StartSession({
 
   const finishOnboarding = async (finalHistory) => {
     setLoading(true);
+    setError("");
 
     try {
-      const data = await postJson("/analyze", { history: finalHistory });
-      const analyzedProfile = { ...fallbackProfile, ...data };
+      const analyzedProfile = await postJson("/analyze", { history: finalHistory });
+      localStorage.setItem(profileKey, JSON.stringify(analyzedProfile));
       setProfile(analyzedProfile);
-      await generatePersonalizedQuiz(analyzedProfile, finalHistory);
+      await generateQuizFromProfile(analyzedProfile, finalHistory);
     } catch (err) {
-      const analyzedProfile = buildFallbackProfile(finalHistory);
-      setProfile(analyzedProfile);
-      setError(`${err.message} Using a local profile and generating your quiz.`);
-      await generatePersonalizedQuiz(analyzedProfile, finalHistory);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const generatePersonalizedQuiz = async (profileData, finalHistory) => {
+  const generateQuizFromProfile = async (profileData, onboardingHistory = history) => {
+    setLoading(true);
+    setError("");
     setGradeResult(null);
     setRewardResult(null);
     setQuiz(null);
 
     try {
       const data = await postJson("/quiz/generate", {
-        studyData: buildPersonalizedStudyData(profileData, finalHistory),
+        studyData: buildStudyMaterial(profileData, onboardingHistory, chatMessages),
       });
 
       setQuiz(data.quiz);
+      setSessionInfo({
+        ...sessionInfo,
+        sessionTimeMinutes: Math.max(10, Number(sessionInfo.sessionTimeMinutes) || 10),
+      });
+      setPage("quiz");
     } catch (err) {
-      setError(`${err.message} Starting a default personalized quiz instead.`);
-      setQuiz(createFallbackQuiz(profileData, finalHistory));
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-
-    setSessionInfo({
-      ...sessionInfo,
-      sessionTimeMinutes: Math.max(10, Number(sessionInfo.sessionTimeMinutes) || 10),
-    });
-    setPage("quiz");
   };
 
-  if (loading) {
-    return (
-      <div style={container}>
-        <TopBar setPage={setPage} onLogout={onLogout} />
-        <main style={centerPanel}>
-          <p style={eyebrow}>AI onboarding</p>
-          <h1 style={title}>Personalizing your session...</h1>
-          <p style={subtitle}>Gemini is preparing the next question.</p>
-        </main>
-      </div>
-    );
-  }
+  const requestChatReply = async (profileData, messages, message) => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await postJson("/study-chat", {
+        profile: profileData,
+        chatHistory: messages,
+        message,
+      });
+
+      const assistantMessage = {
+        role: "assistant",
+        content: data.reply,
+      };
+      setChatMessages([...messages, assistantMessage]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendChatMessage = async () => {
+    const message = chatInput.trim();
+
+    if (!message || !profile) {
+      return;
+    }
+
+    const nextMessages = [...chatMessages, { role: "user", content: message }];
+    setChatInput("");
+    setChatMessages(nextMessages);
+    await requestChatReply(profile, nextMessages, message);
+  };
+
+  const resetOnboarding = () => {
+    localStorage.removeItem(profileKey);
+    setProfile(null);
+    setHistory([]);
+    setSelected([]);
+    setChatMessages([]);
+    startOnboarding();
+  };
 
   return (
     <div style={container}>
       <TopBar setPage={setPage} onLogout={onLogout} />
 
       <main style={main}>
-        <section style={panel}>
-          <div style={headerRow}>
-            <div>
-              <p style={eyebrow}>AI onboarding</p>
-              <h1 style={title}>Tell us how you learn</h1>
-              <p style={subtitle}>
-                Answer a few adaptive questions so your quiz can match your background,
-                skill level, interests, and weak spots.
-              </p>
+        {mode === "chat" ? (
+          <section style={panel}>
+            <div style={headerRow}>
+              <div>
+                <p style={eyebrow}>AI study coach</p>
+                <h1 style={title}>What should we work on today?</h1>
+                <p style={subtitle}>
+                  Your onboarding is saved. Ask for a study plan, revision strategy,
+                  topic breakdown, or quiz direction.
+                </p>
+              </div>
+              <button onClick={resetOnboarding} style={secondaryButton}>
+                Redo onboarding
+              </button>
             </div>
-            <div style={stepBadge}>
-              {Math.min(stepNumber, TOTAL_QUESTIONS)} / {TOTAL_QUESTIONS}
+
+            <div style={chatBox}>
+              {chatMessages.map((message, index) => (
+                <div
+                  key={`${message.role}-${index}`}
+                  style={message.role === "user" ? userBubble : assistantBubble}
+                >
+                  {message.content}
+                </div>
+              ))}
+              {loading && <div style={assistantBubble}>Thinking...</div>}
             </div>
-          </div>
 
-          <div style={progressTrack}>
-            <div style={{ ...progressFill, width: `${progress}%` }} />
-          </div>
+            <div style={chatInputRow}>
+              <input
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    sendChatMessage();
+                  }
+                }}
+                placeholder="Ask for study instructions..."
+                style={chatInputStyle}
+              />
+              <button onClick={sendChatMessage} disabled={loading} style={primaryButton}>
+                Send
+              </button>
+              <button
+                onClick={() => generateQuizFromProfile(profile)}
+                disabled={loading}
+                style={primaryButton}
+              >
+                Generate Quiz
+              </button>
+            </div>
 
-          {question && (
-            <div style={questionBlock}>
-              <h2 style={questionText}>{question.question}</h2>
-              <div style={optionsGrid}>
-                {question.options.map((option) => {
-                  const isSelected = selected === option;
-
-                  return (
-                    <button
-                      key={option}
-                      onClick={() => setSelected(option)}
-                      style={{
-                        ...optionButton,
-                        borderColor: isSelected ? "#38bdf8" : "#334155",
-                        background: isSelected ? "#0e7490" : "#0f172a",
-                      }}
-                    >
-                      {option}
-                    </button>
-                  );
-                })}
+            {error && <p style={errorText}>{error}</p>}
+          </section>
+        ) : (
+          <section style={panel}>
+            <div style={headerRow}>
+              <div>
+                <p style={eyebrow}>AI onboarding</p>
+                <h1 style={title}>Let Gemini personalize your quiz</h1>
+                <p style={subtitle}>
+                  Choose one or more answers. Every question is generated by Gemini
+                  and the next question adapts to your previous answers.
+                </p>
+              </div>
+              <div style={stepBadge}>
+                {Math.min(history.length + 1, TOTAL_ONBOARDING_QUESTIONS)} /{" "}
+                {TOTAL_ONBOARDING_QUESTIONS}
               </div>
             </div>
-          )}
 
-          {profile && (
-            <div style={profileBox}>
-              <strong>Profile ready:</strong> {profile.summary}
+            <div style={progressTrack}>
+              <div style={{ ...progressFill, width: `${progress}%` }} />
             </div>
-          )}
 
-          {error && <p style={errorText}>{error}</p>}
+            {loading && <div style={loadingBox}>Gemini is thinking...</div>}
 
-          <div style={footerRow}>
-            <span style={hint}>
-              The last step generates your personalized quiz automatically.
-            </span>
-            <button
-              onClick={handleNext}
-              disabled={!selected}
-              style={{
-                ...primaryButton,
-                opacity: selected ? 1 : 0.55,
-                cursor: selected ? "pointer" : "not-allowed",
-              }}
-            >
-              {history.length + 1 >= TOTAL_QUESTIONS ? "Generate Quiz" : "Next Question"}
-            </button>
-          </div>
-        </section>
+            {!loading && question && (
+              <div style={questionBlock}>
+                <h2 style={questionText}>{question.question}</h2>
+                <div style={optionsGrid}>
+                  {question.options.map((option) => {
+                    const isSelected = selected.includes(option);
+
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => toggleAnswer(option)}
+                        style={{
+                          ...optionButton,
+                          borderColor: isSelected ? "#38bdf8" : "#334155",
+                          background: isSelected ? "#0e7490" : "#0f172a",
+                        }}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!loading && !question && (
+              <div style={loadingBox}>
+                Could not load the AI question. Check the backend and Gemini key.
+              </div>
+            )}
+
+            {error && <p style={errorText}>{error}</p>}
+
+            <div style={footerRow}>
+              <span style={hint}>Multi-select is enabled.</span>
+              <div style={actions}>
+                {!question && (
+                  <button onClick={startOnboarding} style={secondaryButton}>
+                    Retry
+                  </button>
+                )}
+                <button
+                  onClick={handleNextQuestion}
+                  disabled={loading || !question || selected.length === 0}
+                  style={{
+                    ...primaryButton,
+                    opacity: !loading && question && selected.length > 0 ? 1 : 0.55,
+                    cursor:
+                      !loading && question && selected.length > 0 ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {history.length + 1 >= TOTAL_ONBOARDING_QUESTIONS
+                    ? "Finish & Generate Quiz"
+                    : "Next AI Question"}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
@@ -283,7 +353,7 @@ function TopBar({ setPage, onLogout }) {
         </button>
       </div>
       <div style={brand}>Answer to Unlock</div>
-      <div style={timerBadge}>Personalized Quiz</div>
+      <div style={timerBadge}>Gemini Powered</div>
     </div>
   );
 }
@@ -291,8 +361,8 @@ function TopBar({ setPage, onLogout }) {
 async function postJson(path, body) {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
   });
   const data = await response.json().catch(() => ({}));
 
@@ -303,150 +373,51 @@ async function postJson(path, body) {
   return data;
 }
 
-function normalizeQuestion(data, fallbackIndex, history = []) {
+function normalizeQuestion(data) {
   if (
-    data &&
-    typeof data.question === "string" &&
-    Array.isArray(data.options) &&
-    data.options.length >= 2
+    !data ||
+    typeof data.question !== "string" ||
+    !Array.isArray(data.options) ||
+    data.options.length < 2
   ) {
-    return {
-      question: data.question,
-      options: data.options.slice(0, 5).map(String),
-    };
+    throw new Error("Gemini returned an invalid onboarding question.");
   }
-
-  return fallbackIndex === 0
-    ? fallbackQuestions[0]
-    : buildAdaptiveFallbackQuestion(history);
-}
-
-function buildAdaptiveFallbackQuestion(history) {
-  const lastAnswer = history[history.length - 1]?.answer || "";
-  const lowerAnswer = lastAnswer.toLowerCase();
-
-  if (lowerAnswer.includes("programming") || lowerAnswer.includes("project")) {
-    return {
-      question: "Which programming area should the quiz focus on?",
-      options: ["Frontend UI", "Backend APIs", "Data structures", "Debugging", "System design basics"],
-    };
-  }
-
-  if (lowerAnswer.includes("beginner") || lowerAnswer.includes("fundamentals")) {
-    return {
-      question: "What would make the fundamentals easier for you?",
-      options: ["Simple definitions", "Worked examples", "Visual steps", "Practice drills", "Mistake explanations"],
-    };
-  }
-
-  if (lowerAnswer.includes("advanced") || lowerAnswer.includes("hard")) {
-    return {
-      question: "What kind of challenge should the quiz include?",
-      options: ["Edge cases", "Multi-step reasoning", "Real scenarios", "Speed pressure", "Mixed difficulty"],
-    };
-  }
-
-  return fallbackQuestions[Math.min(history.length, fallbackQuestions.length - 1)];
-}
-
-function buildFallbackProfile(history) {
-  const answers = history.map((item) => item.answer).join(", ");
 
   return {
-    interests: answers || fallbackProfile.interests,
-    skillLevel: inferSkillLevel(answers),
-    learningStyle: "adaptive practice with feedback and explanations",
-    summary: `The learner selected: ${answers}. The quiz should adapt to these interests and include memory, application, and harder reasoning questions.`,
+    question: data.question,
+    options: data.options.map(String).filter(Boolean).slice(0, 6),
   };
 }
 
-function inferSkillLevel(text) {
-  const lowerText = text.toLowerCase();
-
-  if (lowerText.includes("advanced") || lowerText.includes("hard")) {
-    return "advanced";
-  }
-
-  if (lowerText.includes("intermediate") || lowerText.includes("project")) {
-    return "intermediate";
-  }
-
-  return "beginner";
-}
-
-function buildPersonalizedStudyData(profileData, history) {
-  const answers = history
-    .map((item, index) => `${index + 1}. ${item.question} Answer: ${item.answer}`)
+function buildStudyMaterial(profile, onboardingHistory, chatMessages) {
+  const interview = onboardingHistory
+    .map(
+      (item, index) =>
+        `${index + 1}. ${item.question}\nSelected answers: ${item.answers.join(", ")}`
+    )
+    .join("\n\n");
+  const chat = chatMessages
+    .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
   return `
-This personalized study session is for a learner using a productivity app called Answer to Unlock.
-The learner answered an adaptive onboarding interview. Use the interview to create a quiz that
-matches the learner's background, skillset, interests, and current weak spots. The learner profile
-is not random study material: it is the source of personalization. The quiz should test the learner
-on effective learning choices, the selected interest area, and the kind of difficulty they asked for.
+Create a personalized quiz for this learner using only the profile, onboarding interview,
+and study-coach conversation below. The quiz must reflect the learner's interests, skillset,
+background, weak areas, and goals. Avoid generic trivia.
 
 Learner profile:
-Interests: ${profileData.interests}
-Skill level: ${profileData.skillLevel}
-Learning style: ${profileData.learningStyle}
-Summary: ${profileData.summary}
+${JSON.stringify(profile, null, 2)}
 
-Adaptive interview:
-${answers}
+Initial onboarding interview:
+${interview}
 
-Study guidance for quiz generation:
-A beginner needs direct recall, clear definitions, and simple examples before harder application.
-An intermediate learner should be asked to apply concepts to practical situations and explain why
-one approach is stronger than another. An advanced learner should receive multi-step reasoning,
-edge cases, and questions that connect multiple concepts. If the learner picked programming, ask
-about planning, debugging, APIs, UI behavior, data flow, and choosing the right implementation step.
-If the learner picked math or problem solving, ask about breaking a problem into parts, checking
-assumptions, and selecting a method. If the learner picked science, ask about definitions, cause and
-effect, interpreting scenarios, and applying a concept. If the learner picked communication, ask
-about clarity, audience, structure, and revision. If the learner said they get stuck remembering
-details, include memory questions. If they get stuck applying ideas, include scenario questions. If
-they get stuck connecting ideas, include harder questions that require comparison and reasoning.
+Recent study-coach conversation:
+${chat || "No chat yet."}
 
-The quiz should feel personalized to the exact answers above. Do not ask generic trivia. Make the
-questions useful for diagnosing what the learner should study next. Include a balanced progression:
-memory questions first, then application questions, then hard questions. Explanations should teach
-the user why the correct answer fits their profile and learning goal. Keep all questions grounded in
-the profile and guidance above.
+Use this as study material for a personalized quiz. Include foundational recall, applied
+scenario questions, and deeper reasoning questions that match the learner's level. The learner
+should feel that the quiz was created specifically from their answers.
 `;
-}
-
-function createFallbackQuiz(profileData, history) {
-  const topic = profileData.interests || "Personalized Learning";
-  const focus = history[0]?.answer || "focused study";
-  const specs = [
-    ["memory", `What is the main focus selected for this session?`, focus, "Random trivia", "Only page design", "Skipping practice", "A", 1, -0.5],
-    ["memory", "What is the purpose of the onboarding questions?", "To personalize the quiz", "To delay the session", "To remove feedback", "To avoid studying", "A", 1, -0.5],
-    ["memory", "Which habit helps reveal weak areas?", "Answering practice questions", "Only rereading", "Ignoring mistakes", "Changing topics constantly", "A", 1, -0.5],
-    ["memory", "What should feedback explain?", "Why the correct answer works", "Only the final score", "Nothing about mistakes", "Unrelated facts", "A", 1, -0.5],
-    ["application", "If a learner is a beginner, what should the quiz emphasize first?", "Fundamentals and examples", "Only edge cases", "No explanations", "Random hard questions", "A", 2, -1],
-    ["application", "If the learner wants project skill, what question type helps most?", "Practical scenario questions", "Unrelated definitions", "Guessing games", "No application", "A", 2, -1],
-    ["application", "If a learner forgets details, what should they practice?", "Active recall", "Passive scrolling", "Skipping review", "Avoiding questions", "A", 2, -1],
-    ["application", "If a learner struggles applying concepts, what helps?", "Worked scenarios", "Only memorized labels", "Ignoring context", "Removing examples", "A", 2, -1],
-    ["hard", "Why should a personalized quiz mix memory, application, and hard questions?", "It diagnoses different strengths and weaknesses", "It makes scoring random", "It avoids learning goals", "It removes challenge", "A", 4, -0.5],
-    ["hard", "What makes a follow-up question adaptive?", "It uses previous answers to get more specific", "It repeats the same prompt", "It ignores user skill", "It avoids interests", "A", 4, -0.5],
-    ["hard", "Why are explanations important after quiz answers?", "They turn mistakes into study direction", "They hide the correct idea", "They replace practice completely", "They make answers random", "A", 4, -0.5],
-    ["hard", "What is the best final outcome of this onboarding?", "A quiz matched to the learner's goals and level", "A generic quiz", "No quiz", "Only a timer", "A", 4, -0.5],
-  ];
-
-  return {
-    topic,
-    generatedAt: new Date().toISOString(),
-    questions: specs.map(([tier, question, A, B, C, D, correct, right, wrong], index) => ({
-      id: index + 1,
-      tier,
-      question,
-      options: { A, B, C, D },
-      correct,
-      explanation: `${correct} is correct because it matches the learner profile and onboarding goal.`,
-      points: { correct: right, wrong },
-    })),
-  };
 }
 
 const container = {
@@ -492,12 +463,6 @@ const main = {
   padding: "32px 0",
 };
 
-const centerPanel = {
-  width: "min(720px, calc(100% - 32px))",
-  margin: "0 auto",
-  padding: "56px 0",
-};
-
 const panel = {
   background: "#1e293b",
   border: "1px solid #334155",
@@ -511,6 +476,7 @@ const headerRow = {
   justifyContent: "space-between",
   gap: "16px",
   alignItems: "flex-start",
+  flexWrap: "wrap",
 };
 
 const eyebrow = {
@@ -586,13 +552,12 @@ const optionButton = {
   lineHeight: 1.35,
 };
 
-const profileBox = {
-  marginTop: "18px",
-  padding: "14px",
-  borderRadius: "6px",
-  background: "#082f49",
-  border: "1px solid #0369a1",
-  color: "#e0f2fe",
+const loadingBox = {
+  padding: "18px",
+  borderRadius: "8px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  color: "#cbd5e1",
 };
 
 const footerRow = {
@@ -606,6 +571,12 @@ const footerRow = {
 
 const hint = {
   color: "#94a3b8",
+};
+
+const actions = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
 };
 
 const primaryButton = {
@@ -638,6 +609,55 @@ const errorText = {
   border: "1px solid #ef4444",
   padding: "12px",
   borderRadius: "6px",
+};
+
+const chatBox = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+  minHeight: "300px",
+  maxHeight: "460px",
+  overflowY: "auto",
+  padding: "16px",
+  borderRadius: "8px",
+  background: "#0f172a",
+  border: "1px solid #334155",
+};
+
+const assistantBubble = {
+  maxWidth: "78%",
+  alignSelf: "flex-start",
+  background: "#1e3a8a",
+  color: "white",
+  padding: "12px",
+  borderRadius: "8px",
+  lineHeight: 1.45,
+};
+
+const userBubble = {
+  maxWidth: "78%",
+  alignSelf: "flex-end",
+  background: "#0e7490",
+  color: "white",
+  padding: "12px",
+  borderRadius: "8px",
+  lineHeight: 1.45,
+};
+
+const chatInputRow = {
+  display: "flex",
+  gap: "10px",
+  marginTop: "16px",
+  flexWrap: "wrap",
+};
+
+const chatInputStyle = {
+  flex: "1 1 260px",
+  padding: "12px",
+  borderRadius: "6px",
+  border: "1px solid #475569",
+  background: "#0f172a",
+  color: "white",
 };
 
 export default StartSession;
