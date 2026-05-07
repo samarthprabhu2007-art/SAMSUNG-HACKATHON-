@@ -121,9 +121,9 @@ function StartSession({
       setQuiz(data.quiz);
       setQuizReady(true);
     } catch (err) {
-      setError(err.message);
-      setQuiz(null);
-      setQuizReady(false);
+      setError(`${err.message} Starting a default quiz instead.`);
+      setQuiz(createFallbackQuiz());
+      setQuizReady(true);
     } finally {
       setLoadingQuiz(false);
     }
@@ -297,6 +297,37 @@ function StartSession({
       </main>
     </div>
   );
+}
+
+function createFallbackQuiz() {
+  const specs = [
+    ["memory", "What is the main purpose of active recall?", "To retrieve information from memory", "To reread notes without testing", "To avoid mistakes completely", "To study only easy topics", "A", 1, -0.5],
+    ["memory", "What should a learner do after getting a question wrong?", "Ignore it and move on", "Read the explanation and identify the missing idea", "Lower the difficulty forever", "Stop the session immediately", "B", 1, -0.5],
+    ["memory", "Which session habit helps keep learning focused?", "Starting with a clear goal", "Switching topics every minute", "Skipping feedback", "Only counting time spent", "A", 1, -0.5],
+    ["memory", "What does tracking accuracy help reveal?", "Weak areas that need review", "The color of the page", "How fast the internet is", "Whether notes look neat", "A", 1, -0.5],
+    ["application", "A student keeps rereading notes but scores poorly. What should they add?", "More passive rereading", "Active practice questions", "Longer breaks only", "A new font", "B", 2, -1],
+    ["application", "A beginner feels lost in a new topic. What is the best first step?", "Jump to advanced problems", "Memorize answers only", "Review definitions and simple examples", "Skip the topic", "C", 2, -1],
+    ["application", "A learner has 45 minutes. Which plan is strongest?", "Practice, check mistakes, and review explanations", "Watch unrelated videos", "Rewrite notes without testing", "Wait until tomorrow", "A", 2, -1],
+    ["application", "If hard questions are often missed, what should the learner do?", "Review the linked concepts and retry similar problems", "Only answer easy questions", "Stop tracking results", "Assume the topic is impossible", "A", 2, -1],
+    ["hard", "Why is a short focused session often better than a long distracted one?", "Because attention and feedback drive learning quality", "Because time never matters", "Because mistakes should be avoided", "Because hard topics need no review", "A", 4, -0.5],
+    ["hard", "Which cycle best describes effective improvement?", "Guess, forget, repeat", "Prepare, recall, correct, reflect", "Read, scroll, stop, repeat", "Avoid, delay, restart", "B", 4, -0.5],
+    ["hard", "Why are mistakes useful during practice?", "They reveal what needs correction", "They prove learning is finished", "They should never be reviewed", "They make feedback unnecessary", "A", 4, -0.5],
+    ["hard", "How should advanced learners deepen understanding?", "Connect concepts and explain tradeoffs", "Only memorize isolated terms", "Avoid challenging questions", "Use feedback less often", "A", 4, -0.5],
+  ];
+
+  return {
+    topic: "Focused Learning Practice",
+    generatedAt: new Date().toISOString(),
+    questions: specs.map(([tier, question, A, B, C, D, correct, right, wrong], index) => ({
+      id: index + 1,
+      tier,
+      question,
+      options: { A, B, C, D },
+      correct,
+      explanation: `${correct} is correct because it matches the study strategy described in the session material.`,
+      points: { correct: right, wrong },
+    })),
+  };
 }
 
 const container = {
