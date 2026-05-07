@@ -31,18 +31,80 @@ function StartSession({
   );
 
   useEffect(() => {
-    const savedProfile = localStorage.getItem(profileKey);
+    let cancelled = false;
 
-    if (savedProfile) {
-      const parsedProfile = JSON.parse(savedProfile);
-      setProfile(parsedProfile);
-      setMode("chat");
-      requestChatReply(parsedProfile, [], "Initialize a concise study coaching session.");
-      return;
-    }
+    Promise.resolve().then(async () => {
+      const savedProfile = localStorage.getItem(profileKey);
 
-    startOnboarding();
-  }, [profileKey]);
+      if (savedProfile) {
+        const parsedProfile = JSON.parse(savedProfile);
+
+        if (cancelled) {
+          return;
+        }
+
+        setProfile(parsedProfile);
+        setMode("chat");
+        setLoading(true);
+        setError("");
+
+        try {
+          const data = await postJson("/study-chat", {
+            profile: parsedProfile,
+            chatHistory: [],
+            message: "Initialize a concise study coaching session.",
+          });
+
+          if (!cancelled) {
+            setChatMessages([{ role: "assistant", content: data.reply }]);
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setError(err.message);
+          }
+        } finally {
+          if (!cancelled) {
+            setLoading(false);
+          }
+        }
+
+        return;
+      }
+
+      if (!cancelled) {
+        setMode("onboarding");
+        setLoading(true);
+        setError("");
+      }
+
+      try {
+        const data = await postJson("/start", {
+          user: {
+            id: userId,
+            name: localStorage.getItem("userName") || "Learner",
+            email: localStorage.getItem("userEmail") || "",
+          },
+        });
+
+        if (!cancelled) {
+          setQuestion(normalizeQuestion(data));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message);
+          setQuestion(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profileKey, userId]);
 
   const startOnboarding = async () => {
     setMode("onboarding");
