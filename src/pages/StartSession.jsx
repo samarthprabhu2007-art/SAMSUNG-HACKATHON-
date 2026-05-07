@@ -37,7 +37,7 @@ function StartSession({
       const parsedProfile = JSON.parse(savedProfile);
       setProfile(parsedProfile);
       setMode("chat");
-      requestChatReply(parsedProfile, [], "Start a new study coaching session for me.");
+      requestChatReply(parsedProfile, [], "Initialize a concise study coaching session.");
       return;
     }
 
@@ -205,7 +205,7 @@ function StartSession({
             <div style={headerRow}>
               <div>
                 <p style={eyebrow}>AI study coach</p>
-                <h1 style={title}>What should we work on today?</h1>
+                <h1 style={title}>AI study coach</h1>
                 <p style={subtitle}>
                   Your onboarding is saved. Ask for a study plan, revision strategy,
                   topic breakdown, or quiz direction.
