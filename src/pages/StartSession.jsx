@@ -1,25 +1,68 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = "http://localhost:3000";
+const TOTAL_QUESTIONS = 5;
 
-function formatTime(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
-  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
-}
+const fallbackQuestions = [
+  {
+    question: "What are you trying to get better at right now?",
+    options: [
+      "Programming and building apps",
+      "Math or problem solving",
+      "Science concepts",
+      "Communication and writing",
+      "I am still exploring",
+    ],
+  },
+  {
+    question: "How would you describe your current skill level?",
+    options: [
+      "Beginner: I need fundamentals",
+      "Intermediate: I can solve familiar tasks",
+      "Advanced: I want harder edge cases",
+      "Rusty: I learned it before but need revision",
+      "Mixed: it depends on the topic",
+    ],
+  },
+  {
+    question: "What kind of quiz would help you most today?",
+    options: [
+      "Definitions and memory checks",
+      "Scenario-based application questions",
+      "Hard reasoning questions",
+      "A balanced mix",
+      "Quick diagnosis of weak areas",
+    ],
+  },
+  {
+    question: "Where do you usually get stuck?",
+    options: [
+      "Understanding the first explanation",
+      "Remembering details later",
+      "Applying concepts to new problems",
+      "Connecting multiple ideas",
+      "Staying focused long enough",
+    ],
+  },
+  {
+    question: "What should this session optimize for?",
+    options: [
+      "Confidence with basics",
+      "Exam readiness",
+      "Project-building ability",
+      "Speed and accuracy",
+      "Deep understanding",
+    ],
+  },
+];
 
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      resolve(result.split(",")[1] || "");
-    };
-    reader.onerror = () => reject(new Error("Could not read the PDF file."));
-    reader.readAsDataURL(file);
-  });
-}
+const fallbackProfile = {
+  interests: "focused learning and practical improvement",
+  skillLevel: "beginner | intermediate",
+  learningStyle: "active recall with explanations and scenario practice",
+  summary:
+    "The learner benefits from clear fundamentals, practical examples, and a balanced quiz that reveals weak areas.",
+};
 
 function StartSession({
   setPage,
@@ -30,293 +73,369 @@ function StartSession({
   setSessionInfo,
   onLogout,
 }) {
-  const [studyData, setStudyData] = useState("");
-  const [pdfFile, setPdfFile] = useState(null);
-  const [pdfData, setPdfData] = useState("");
+  const [question, setQuestion] = useState(null);
+  const [selected, setSelected] = useState("");
+  const [history, setHistory] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [loadingQuiz, setLoadingQuiz] = useState(false);
-  const [quizReady, setQuizReady] = useState(false);
-  const [studyStarted, setStudyStarted] = useState(false);
-  const [studyComplete, setStudyComplete] = useState(false);
-  const [timeLeft, setTimeLeft] = useState((sessionInfo.sessionTimeMinutes || 10) * 60);
+
+  const stepNumber = history.length + 1;
+  const progress = useMemo(
+    () => Math.min(100, Math.round((history.length / TOTAL_QUESTIONS) * 100)),
+    [history.length]
+  );
 
   useEffect(() => {
-    if (!studyStarted || studyComplete) {
-      return undefined;
-    }
+    loadFirstQuestion();
+  }, []);
 
-    const timer = setInterval(() => {
-      setTimeLeft((current) => Math.max(0, current - 1));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [studyComplete, studyStarted]);
-
-  useEffect(() => {
-    if (studyStarted && timeLeft === 0) {
-      Promise.resolve().then(() => setStudyComplete(true));
-    }
-  }, [studyStarted, timeLeft]);
-
-  const wordCount = studyData.trim().match(/\S+/g)?.length ?? 0;
-  const hasPdf = Boolean(pdfData);
-  const canStartStudy = !studyStarted && (wordCount >= 300 || hasPdf);
-  const handlePdfUpload = async (event) => {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    if (file.type !== "application/pdf") {
-      setError("Please upload a PDF file.");
-      return;
-    }
-
-    if (file.size > 20 * 1024 * 1024) {
-      setError("Please upload a PDF smaller than 20 MB.");
-      return;
-    }
-
-    try {
-      setError("");
-      setPdfFile(file);
-      setPdfData(await readFileAsBase64(file));
-    } catch (err) {
-      setError(err.message);
-      setPdfFile(null);
-      setPdfData("");
-    }
-  };
-
-  const clearPdf = () => {
-    setPdfFile(null);
-    setPdfData("");
-  };
-
-  const prepareQuiz = async () => {
-    setLoadingQuiz(true);
-    setQuizReady(false);
-
-    try {
-      const response = await fetch(`${API_BASE}/quiz/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studyData,
-          pdf: hasPdf
-            ? {
-                data: pdfData,
-                name: pdfFile?.name,
-              }
-            : undefined,
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Could not generate quiz.");
-      }
-
-      setQuiz(data.quiz);
-      setQuizReady(true);
-    } catch (err) {
-      setError(`${err.message} Starting a default quiz instead.`);
-      setQuiz(createFallbackQuiz());
-      setQuizReady(true);
-    } finally {
-      setLoadingQuiz(false);
-    }
-  };
-
-  const handleStartStudy = () => {
-    const minutes = Math.max(1, Number(sessionInfo.sessionTimeMinutes) || 10);
-
+  const loadFirstQuestion = async () => {
+    setLoading(true);
     setError("");
+
+    try {
+      const data = await postJson("/start");
+      setQuestion(normalizeQuestion(data, 0));
+    } catch {
+      setQuestion(fallbackQuestions[0]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNext = async () => {
+    if (!selected || !question) {
+      return;
+    }
+
+    const updatedHistory = [
+      ...history,
+      {
+        question: question.question,
+        answer: selected,
+      },
+    ];
+
+    setHistory(updatedHistory);
+    setSelected("");
+    setError("");
+
+    if (updatedHistory.length >= TOTAL_QUESTIONS) {
+      await finishOnboarding(updatedHistory);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const data = await postJson("/next", { history: updatedHistory });
+      setQuestion(normalizeQuestion(data, updatedHistory.length, updatedHistory));
+    } catch {
+      setQuestion(buildAdaptiveFallbackQuestion(updatedHistory));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finishOnboarding = async (finalHistory) => {
+    setLoading(true);
+
+    try {
+      const data = await postJson("/analyze", { history: finalHistory });
+      const analyzedProfile = { ...fallbackProfile, ...data };
+      setProfile(analyzedProfile);
+      await generatePersonalizedQuiz(analyzedProfile, finalHistory);
+    } catch (err) {
+      const analyzedProfile = buildFallbackProfile(finalHistory);
+      setProfile(analyzedProfile);
+      setError(`${err.message} Using a local profile and generating your quiz.`);
+      await generatePersonalizedQuiz(analyzedProfile, finalHistory);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generatePersonalizedQuiz = async (profileData, finalHistory) => {
     setGradeResult(null);
     setRewardResult(null);
     setQuiz(null);
-    setQuizReady(false);
-    setSessionInfo({ ...sessionInfo, sessionTimeMinutes: minutes });
-    setTimeLeft(minutes * 60);
-    setStudyComplete(false);
-    setStudyStarted(true);
-    prepareQuiz();
-  };
 
-  const handleTakeQuiz = () => {
-    if (!quizReady) {
-      setError("Quiz is still preparing. Give Gemini a moment.");
-      return;
+    try {
+      const data = await postJson("/quiz/generate", {
+        studyData: buildPersonalizedStudyData(profileData, finalHistory),
+      });
+
+      setQuiz(data.quiz);
+    } catch (err) {
+      setError(`${err.message} Starting a default personalized quiz instead.`);
+      setQuiz(createFallbackQuiz(profileData, finalHistory));
     }
 
+    setSessionInfo({
+      ...sessionInfo,
+      sessionTimeMinutes: Math.max(10, Number(sessionInfo.sessionTimeMinutes) || 10),
+    });
     setPage("quiz");
   };
 
+  if (loading) {
+    return (
+      <div style={container}>
+        <TopBar setPage={setPage} onLogout={onLogout} />
+        <main style={centerPanel}>
+          <p style={eyebrow}>AI onboarding</p>
+          <h1 style={title}>Personalizing your session...</h1>
+          <p style={subtitle}>Gemini is preparing the next question.</p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div style={container}>
-      <div style={topBar}>
-        <div style={navActions}>
-          <button onClick={() => setPage("home")} style={secondaryButton}>
-            Home
-          </button>
-          <button onClick={onLogout} style={logoutButton}>
-            Logout
-          </button>
-        </div>
-        <div style={brand}>Answer to Unlock</div>
-        <div style={timerBadge}>Study Timer {formatTime(timeLeft)}</div>
-      </div>
+      <TopBar setPage={setPage} onLogout={onLogout} />
 
       <main style={main}>
         <section style={panel}>
-          <div>
-            <p style={eyebrow}>Study session</p>
-            <h1 style={title}>Study now. Your quiz prepares in the background.</h1>
-            <p style={subtitle}>
-              Choose your study limit, upload a PDF or paste notes, then start studying.
-              When time ends, you can jump straight into the quiz.
-            </p>
+          <div style={headerRow}>
+            <div>
+              <p style={eyebrow}>AI onboarding</p>
+              <h1 style={title}>Tell us how you learn</h1>
+              <p style={subtitle}>
+                Answer a few adaptive questions so your quiz can match your background,
+                skill level, interests, and weak spots.
+              </p>
+            </div>
+            <div style={stepBadge}>
+              {Math.min(stepNumber, TOTAL_QUESTIONS)} / {TOTAL_QUESTIONS}
+            </div>
           </div>
 
-          <div style={settingsRow}>
-            <label style={fieldLabel}>
-              Study limit in minutes
-              <input
-                type="number"
-                min="1"
-                disabled={studyStarted}
-                value={sessionInfo.sessionTimeMinutes}
-                onChange={(event) =>
-                  setSessionInfo({
-                    ...sessionInfo,
-                    sessionTimeMinutes: Number(event.target.value),
-                  })
-                }
-                style={smallInput}
-              />
-            </label>
-
-            <label style={fieldLabel}>
-              Streak multiplier
-              <input
-                type="number"
-                min="1"
-                step="0.1"
-                disabled={studyStarted}
-                value={sessionInfo.streakMultiplier}
-                onChange={(event) =>
-                  setSessionInfo({
-                    ...sessionInfo,
-                    streakMultiplier: Number(event.target.value),
-                  })
-                }
-                style={smallInput}
-              />
-            </label>
+          <div style={progressTrack}>
+            <div style={{ ...progressFill, width: `${progress}%` }} />
           </div>
 
-          <label style={fieldLabel}>
-            PDF study material
-            <input
-              type="file"
-              accept="application/pdf"
-              disabled={studyStarted}
-              onChange={handlePdfUpload}
-              style={fileInput}
-            />
-          </label>
+          {question && (
+            <div style={questionBlock}>
+              <h2 style={questionText}>{question.question}</h2>
+              <div style={optionsGrid}>
+                {question.options.map((option) => {
+                  const isSelected = selected === option;
 
-          {pdfFile && (
-            <div style={pdfNotice}>
-              <span>Attached PDF: {pdfFile.name}</span>
-              {!studyStarted && (
-                <button onClick={clearPdf} style={miniButton}>
-                  Remove PDF
-                </button>
-              )}
+                  return (
+                    <button
+                      key={option}
+                      onClick={() => setSelected(option)}
+                      style={{
+                        ...optionButton,
+                        borderColor: isSelected ? "#38bdf8" : "#334155",
+                        background: isSelected ? "#0e7490" : "#0f172a",
+                      }}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          <label style={fieldLabel}>
-            Study material
-            <textarea
-              value={studyData}
-              disabled={studyStarted}
-              onChange={(event) => setStudyData(event.target.value)}
-              placeholder="Paste your chapter notes, lecture summary, or extra hints here..."
-              style={textarea}
-            />
-          </label>
-
-          <div style={footerRow}>
-            <span style={wordCounter}>
-              {hasPdf ? "PDF ready" : `${wordCount} / 300 words`}
-              {loadingQuiz ? " | Preparing quiz..." : ""}
-              {quizReady ? " | Quiz ready" : ""}
-            </span>
-
-            {!studyStarted ? (
-              <button
-                onClick={handleStartStudy}
-                disabled={!canStartStudy}
-                style={{
-                  ...primaryButton,
-                  opacity: canStartStudy ? 1 : 0.55,
-                  cursor: canStartStudy ? "pointer" : "not-allowed",
-                }}
-              >
-                Start Studying
-              </button>
-            ) : studyComplete ? (
-              <button
-                onClick={handleTakeQuiz}
-                disabled={!quizReady}
-                style={{
-                  ...primaryButton,
-                  opacity: quizReady ? 1 : 0.55,
-                  cursor: quizReady ? "pointer" : "not-allowed",
-                }}
-              >
-                {quizReady ? "Take Quiz" : "Preparing Quiz..."}
-              </button>
-            ) : (
-              <span style={activeStudyText}>Keep studying. Quiz unlocks when time ends.</span>
-            )}
-          </div>
-
-          {studyComplete && (
-            <div style={donePanel}>
-              <h2 style={doneTitle}>Study time complete</h2>
-              <p style={subtitle}>Do you want to take the quiz now?</p>
+          {profile && (
+            <div style={profileBox}>
+              <strong>Profile ready:</strong> {profile.summary}
             </div>
           )}
 
           {error && <p style={errorText}>{error}</p>}
+
+          <div style={footerRow}>
+            <span style={hint}>
+              The last step generates your personalized quiz automatically.
+            </span>
+            <button
+              onClick={handleNext}
+              disabled={!selected}
+              style={{
+                ...primaryButton,
+                opacity: selected ? 1 : 0.55,
+                cursor: selected ? "pointer" : "not-allowed",
+              }}
+            >
+              {history.length + 1 >= TOTAL_QUESTIONS ? "Generate Quiz" : "Next Question"}
+            </button>
+          </div>
         </section>
       </main>
     </div>
   );
 }
 
-function createFallbackQuiz() {
+function TopBar({ setPage, onLogout }) {
+  return (
+    <div style={topBar}>
+      <div style={navActions}>
+        <button onClick={() => setPage("home")} style={secondaryButton}>
+          Home
+        </button>
+        <button onClick={onLogout} style={logoutButton}>
+          Logout
+        </button>
+      </div>
+      <div style={brand}>Answer to Unlock</div>
+      <div style={timerBadge}>Personalized Quiz</div>
+    </div>
+  );
+}
+
+async function postJson(path, body) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || `Request failed: ${path}`);
+  }
+
+  return data;
+}
+
+function normalizeQuestion(data, fallbackIndex, history = []) {
+  if (
+    data &&
+    typeof data.question === "string" &&
+    Array.isArray(data.options) &&
+    data.options.length >= 2
+  ) {
+    return {
+      question: data.question,
+      options: data.options.slice(0, 5).map(String),
+    };
+  }
+
+  return fallbackIndex === 0
+    ? fallbackQuestions[0]
+    : buildAdaptiveFallbackQuestion(history);
+}
+
+function buildAdaptiveFallbackQuestion(history) {
+  const lastAnswer = history[history.length - 1]?.answer || "";
+  const lowerAnswer = lastAnswer.toLowerCase();
+
+  if (lowerAnswer.includes("programming") || lowerAnswer.includes("project")) {
+    return {
+      question: "Which programming area should the quiz focus on?",
+      options: ["Frontend UI", "Backend APIs", "Data structures", "Debugging", "System design basics"],
+    };
+  }
+
+  if (lowerAnswer.includes("beginner") || lowerAnswer.includes("fundamentals")) {
+    return {
+      question: "What would make the fundamentals easier for you?",
+      options: ["Simple definitions", "Worked examples", "Visual steps", "Practice drills", "Mistake explanations"],
+    };
+  }
+
+  if (lowerAnswer.includes("advanced") || lowerAnswer.includes("hard")) {
+    return {
+      question: "What kind of challenge should the quiz include?",
+      options: ["Edge cases", "Multi-step reasoning", "Real scenarios", "Speed pressure", "Mixed difficulty"],
+    };
+  }
+
+  return fallbackQuestions[Math.min(history.length, fallbackQuestions.length - 1)];
+}
+
+function buildFallbackProfile(history) {
+  const answers = history.map((item) => item.answer).join(", ");
+
+  return {
+    interests: answers || fallbackProfile.interests,
+    skillLevel: inferSkillLevel(answers),
+    learningStyle: "adaptive practice with feedback and explanations",
+    summary: `The learner selected: ${answers}. The quiz should adapt to these interests and include memory, application, and harder reasoning questions.`,
+  };
+}
+
+function inferSkillLevel(text) {
+  const lowerText = text.toLowerCase();
+
+  if (lowerText.includes("advanced") || lowerText.includes("hard")) {
+    return "advanced";
+  }
+
+  if (lowerText.includes("intermediate") || lowerText.includes("project")) {
+    return "intermediate";
+  }
+
+  return "beginner";
+}
+
+function buildPersonalizedStudyData(profileData, history) {
+  const answers = history
+    .map((item, index) => `${index + 1}. ${item.question} Answer: ${item.answer}`)
+    .join("\n");
+
+  return `
+This personalized study session is for a learner using a productivity app called Answer to Unlock.
+The learner answered an adaptive onboarding interview. Use the interview to create a quiz that
+matches the learner's background, skillset, interests, and current weak spots. The learner profile
+is not random study material: it is the source of personalization. The quiz should test the learner
+on effective learning choices, the selected interest area, and the kind of difficulty they asked for.
+
+Learner profile:
+Interests: ${profileData.interests}
+Skill level: ${profileData.skillLevel}
+Learning style: ${profileData.learningStyle}
+Summary: ${profileData.summary}
+
+Adaptive interview:
+${answers}
+
+Study guidance for quiz generation:
+A beginner needs direct recall, clear definitions, and simple examples before harder application.
+An intermediate learner should be asked to apply concepts to practical situations and explain why
+one approach is stronger than another. An advanced learner should receive multi-step reasoning,
+edge cases, and questions that connect multiple concepts. If the learner picked programming, ask
+about planning, debugging, APIs, UI behavior, data flow, and choosing the right implementation step.
+If the learner picked math or problem solving, ask about breaking a problem into parts, checking
+assumptions, and selecting a method. If the learner picked science, ask about definitions, cause and
+effect, interpreting scenarios, and applying a concept. If the learner picked communication, ask
+about clarity, audience, structure, and revision. If the learner said they get stuck remembering
+details, include memory questions. If they get stuck applying ideas, include scenario questions. If
+they get stuck connecting ideas, include harder questions that require comparison and reasoning.
+
+The quiz should feel personalized to the exact answers above. Do not ask generic trivia. Make the
+questions useful for diagnosing what the learner should study next. Include a balanced progression:
+memory questions first, then application questions, then hard questions. Explanations should teach
+the user why the correct answer fits their profile and learning goal. Keep all questions grounded in
+the profile and guidance above.
+`;
+}
+
+function createFallbackQuiz(profileData, history) {
+  const topic = profileData.interests || "Personalized Learning";
+  const focus = history[0]?.answer || "focused study";
   const specs = [
-    ["memory", "What is the main purpose of active recall?", "To retrieve information from memory", "To reread notes without testing", "To avoid mistakes completely", "To study only easy topics", "A", 1, -0.5],
-    ["memory", "What should a learner do after getting a question wrong?", "Ignore it and move on", "Read the explanation and identify the missing idea", "Lower the difficulty forever", "Stop the session immediately", "B", 1, -0.5],
-    ["memory", "Which session habit helps keep learning focused?", "Starting with a clear goal", "Switching topics every minute", "Skipping feedback", "Only counting time spent", "A", 1, -0.5],
-    ["memory", "What does tracking accuracy help reveal?", "Weak areas that need review", "The color of the page", "How fast the internet is", "Whether notes look neat", "A", 1, -0.5],
-    ["application", "A student keeps rereading notes but scores poorly. What should they add?", "More passive rereading", "Active practice questions", "Longer breaks only", "A new font", "B", 2, -1],
-    ["application", "A beginner feels lost in a new topic. What is the best first step?", "Jump to advanced problems", "Memorize answers only", "Review definitions and simple examples", "Skip the topic", "C", 2, -1],
-    ["application", "A learner has 45 minutes. Which plan is strongest?", "Practice, check mistakes, and review explanations", "Watch unrelated videos", "Rewrite notes without testing", "Wait until tomorrow", "A", 2, -1],
-    ["application", "If hard questions are often missed, what should the learner do?", "Review the linked concepts and retry similar problems", "Only answer easy questions", "Stop tracking results", "Assume the topic is impossible", "A", 2, -1],
-    ["hard", "Why is a short focused session often better than a long distracted one?", "Because attention and feedback drive learning quality", "Because time never matters", "Because mistakes should be avoided", "Because hard topics need no review", "A", 4, -0.5],
-    ["hard", "Which cycle best describes effective improvement?", "Guess, forget, repeat", "Prepare, recall, correct, reflect", "Read, scroll, stop, repeat", "Avoid, delay, restart", "B", 4, -0.5],
-    ["hard", "Why are mistakes useful during practice?", "They reveal what needs correction", "They prove learning is finished", "They should never be reviewed", "They make feedback unnecessary", "A", 4, -0.5],
-    ["hard", "How should advanced learners deepen understanding?", "Connect concepts and explain tradeoffs", "Only memorize isolated terms", "Avoid challenging questions", "Use feedback less often", "A", 4, -0.5],
+    ["memory", `What is the main focus selected for this session?`, focus, "Random trivia", "Only page design", "Skipping practice", "A", 1, -0.5],
+    ["memory", "What is the purpose of the onboarding questions?", "To personalize the quiz", "To delay the session", "To remove feedback", "To avoid studying", "A", 1, -0.5],
+    ["memory", "Which habit helps reveal weak areas?", "Answering practice questions", "Only rereading", "Ignoring mistakes", "Changing topics constantly", "A", 1, -0.5],
+    ["memory", "What should feedback explain?", "Why the correct answer works", "Only the final score", "Nothing about mistakes", "Unrelated facts", "A", 1, -0.5],
+    ["application", "If a learner is a beginner, what should the quiz emphasize first?", "Fundamentals and examples", "Only edge cases", "No explanations", "Random hard questions", "A", 2, -1],
+    ["application", "If the learner wants project skill, what question type helps most?", "Practical scenario questions", "Unrelated definitions", "Guessing games", "No application", "A", 2, -1],
+    ["application", "If a learner forgets details, what should they practice?", "Active recall", "Passive scrolling", "Skipping review", "Avoiding questions", "A", 2, -1],
+    ["application", "If a learner struggles applying concepts, what helps?", "Worked scenarios", "Only memorized labels", "Ignoring context", "Removing examples", "A", 2, -1],
+    ["hard", "Why should a personalized quiz mix memory, application, and hard questions?", "It diagnoses different strengths and weaknesses", "It makes scoring random", "It avoids learning goals", "It removes challenge", "A", 4, -0.5],
+    ["hard", "What makes a follow-up question adaptive?", "It uses previous answers to get more specific", "It repeats the same prompt", "It ignores user skill", "It avoids interests", "A", 4, -0.5],
+    ["hard", "Why are explanations important after quiz answers?", "They turn mistakes into study direction", "They hide the correct idea", "They replace practice completely", "They make answers random", "A", 4, -0.5],
+    ["hard", "What is the best final outcome of this onboarding?", "A quiz matched to the learner's goals and level", "A generic quiz", "No quiz", "Only a timer", "A", 4, -0.5],
   ];
 
   return {
-    topic: "Focused Learning Practice",
+    topic,
     generatedAt: new Date().toISOString(),
     questions: specs.map(([tier, question, A, B, C, D, correct, right, wrong], index) => ({
       id: index + 1,
@@ -324,7 +443,7 @@ function createFallbackQuiz() {
       question,
       options: { A, B, C, D },
       correct,
-      explanation: `${correct} is correct because it matches the study strategy described in the session material.`,
+      explanation: `${correct} is correct because it matches the learner profile and onboarding goal.`,
       points: { correct: right, wrong },
     })),
   };
@@ -373,12 +492,25 @@ const main = {
   padding: "32px 0",
 };
 
+const centerPanel = {
+  width: "min(720px, calc(100% - 32px))",
+  margin: "0 auto",
+  padding: "56px 0",
+};
+
 const panel = {
   background: "#1e293b",
   border: "1px solid #334155",
   borderRadius: "8px",
   padding: "28px",
   textAlign: "left",
+};
+
+const headerRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "16px",
+  alignItems: "flex-start",
 };
 
 const eyebrow = {
@@ -398,72 +530,69 @@ const title = {
 const subtitle = {
   color: "#cbd5e1",
   marginBottom: "24px",
+  lineHeight: 1.5,
 };
 
-const settingsRow = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "16px",
-  marginBottom: "18px",
-};
-
-const fieldLabel = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-  color: "#e2e8f0",
+const stepBadge = {
+  minWidth: "70px",
+  padding: "10px 12px",
+  borderRadius: "999px",
+  background: "#0f172a",
+  border: "1px solid #475569",
+  color: "#bfdbfe",
+  textAlign: "center",
   fontWeight: 700,
 };
 
-const smallInput = {
-  padding: "12px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
+const progressTrack = {
+  height: "8px",
   background: "#0f172a",
-  color: "white",
-  fontSize: "1rem",
+  borderRadius: "999px",
+  overflow: "hidden",
+  marginBottom: "24px",
 };
 
-const fileInput = {
-  padding: "12px",
-  borderRadius: "6px",
-  border: "1px dashed #38bdf8",
-  background: "#0f172a",
-  color: "white",
+const progressFill = {
+  height: "100%",
+  background: "#38bdf8",
+  transition: "width 180ms ease",
 };
 
-const pdfNotice = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
+const questionBlock = {
+  display: "grid",
+  gap: "18px",
+};
+
+const questionText = {
+  margin: 0,
+  fontSize: "1.3rem",
+  lineHeight: 1.4,
+};
+
+const optionsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "12px",
-  padding: "12px",
+};
+
+const optionButton = {
+  minHeight: "64px",
+  padding: "14px",
+  borderRadius: "6px",
+  border: "1px solid #334155",
+  color: "white",
+  textAlign: "left",
+  cursor: "pointer",
+  lineHeight: 1.35,
+};
+
+const profileBox = {
+  marginTop: "18px",
+  padding: "14px",
   borderRadius: "6px",
   background: "#082f49",
   border: "1px solid #0369a1",
-  margin: "14px 0",
-  flexWrap: "wrap",
-};
-
-const miniButton = {
-  padding: "8px 10px",
-  borderRadius: "6px",
-  border: "1px solid #7dd3fc",
-  background: "transparent",
-  color: "white",
-  cursor: "pointer",
-};
-
-const textarea = {
-  minHeight: "260px",
-  resize: "vertical",
-  padding: "14px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#0f172a",
-  color: "white",
-  fontSize: "1rem",
-  lineHeight: 1.5,
+  color: "#e0f2fe",
 };
 
 const footerRow = {
@@ -471,29 +600,12 @@ const footerRow = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: "16px",
-  marginTop: "18px",
+  marginTop: "24px",
   flexWrap: "wrap",
 };
 
-const wordCounter = {
+const hint = {
   color: "#94a3b8",
-};
-
-const activeStudyText = {
-  color: "#bfdbfe",
-  fontWeight: 700,
-};
-
-const donePanel = {
-  marginTop: "20px",
-  padding: "18px",
-  borderRadius: "8px",
-  background: "#0f172a",
-  border: "1px solid #38bdf8",
-};
-
-const doneTitle = {
-  margin: "0 0 8px",
 };
 
 const primaryButton = {
