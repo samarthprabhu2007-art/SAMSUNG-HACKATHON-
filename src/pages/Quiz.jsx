@@ -64,6 +64,14 @@ async function saveProgressEntry({ quiz, gradeResult, rewardResult, sessionInfo,
     throw new Error(data.error || "Could not save progress to OpenClaw.");
   }
 
+  if (sessionInfo.activeSessionId) {
+    await fetch(`${API_BASE}/sessions/${sessionInfo.activeSessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    });
+  }
+
   return data.entry;
 }
 
@@ -79,7 +87,17 @@ async function sendTelegramNotification(path, body) {
   }
 }
 
-function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, sessionInfo, onLogout }) {
+function Quiz({
+  setPage,
+  quiz,
+  setQuiz,
+  setGradeResult,
+  setRewardResult,
+  compulsoryQuiz,
+  setCompulsoryQuiz,
+  sessionInfo,
+  onLogout,
+}) {
   const [answers, setAnswers] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -165,6 +183,7 @@ function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, session
         updatedBalance: savedEntry.epBalance,
         streakMultiplier,
       });
+      setCompulsoryQuiz(false);
       setQuiz(null);
       setPage("rewards");
     } catch (err) {
@@ -173,7 +192,16 @@ function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, session
     } finally {
       setLoading(false);
     }
-  }, [answers, quiz, sessionInfo, setGradeResult, setPage, setQuiz, setRewardResult]);
+  }, [
+    answers,
+    quiz,
+    sessionInfo,
+    setCompulsoryQuiz,
+    setGradeResult,
+    setPage,
+    setQuiz,
+    setRewardResult,
+  ]);
 
   useEffect(() => {
     if (!quiz || quizStartNotifiedRef.current) {
@@ -186,6 +214,20 @@ function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, session
       totalQuestions: quiz.questions.length,
     });
   }, [quiz]);
+
+  useEffect(() => {
+    if (!compulsoryQuiz || !quiz || submittedRef.current) {
+      return undefined;
+    }
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [compulsoryQuiz, quiz]);
 
   useEffect(() => {
     if (!quiz || submittedRef.current) {
@@ -229,15 +271,21 @@ function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, session
     <div style={container}>
       <div style={topBar}>
         <div style={navActions}>
-          <button onClick={() => setPage("home")} style={secondaryButton}>
-            Home
-          </button>
-          <button onClick={() => setPage("start")} style={secondaryButton}>
-            Back
-          </button>
-          <button onClick={onLogout} style={logoutButton}>
-            Logout
-          </button>
+          {compulsoryQuiz ? (
+            <span style={compulsoryBadge}>Compulsory quiz</span>
+          ) : (
+            <>
+              <button onClick={() => setPage("home")} style={secondaryButton}>
+                Home
+              </button>
+              <button onClick={() => setPage("start")} style={secondaryButton}>
+                Back
+              </button>
+              <button onClick={onLogout} style={logoutButton}>
+                Logout
+              </button>
+            </>
+          )}
         </div>
         <div style={headerMeta}>
           <strong>{quiz.topic}</strong>
@@ -296,7 +344,9 @@ function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, session
 
         <div style={submitBar}>
           <span style={hint}>
-            {timeLeft === 0
+            {compulsoryQuiz
+              ? "You ended study early, so this quiz must be submitted now."
+              : timeLeft === 0
               ? "Time is up. Submitting your quiz..."
               : "Unanswered questions count as wrong."}
           </span>
@@ -363,6 +413,15 @@ const headerMeta = {
   color: "#cbd5e1",
   alignItems: "center",
   flexWrap: "wrap",
+};
+
+const compulsoryBadge = {
+  color: "#fecaca",
+  background: "#7f1d1d",
+  border: "1px solid #ef4444",
+  borderRadius: "999px",
+  padding: "8px 12px",
+  fontWeight: 700,
 };
 
 const timerBadge = {

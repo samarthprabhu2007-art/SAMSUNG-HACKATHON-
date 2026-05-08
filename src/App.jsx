@@ -14,6 +14,7 @@ function App() {
   const [quiz, setQuiz] = useState(null);
   const [gradeResult, setGradeResult] = useState(null);
   const [rewardResult, setRewardResult] = useState(null);
+  const [compulsoryQuiz, setCompulsoryQuiz] = useState(false);
   const [currentUser, setCurrentUser] = useState(() => {
     const id = localStorage.getItem("userId");
     const name = localStorage.getItem("userName");
@@ -40,6 +41,7 @@ function App() {
     setQuiz(null);
     setGradeResult(null);
     setRewardResult(null);
+    setCompulsoryQuiz(false);
     setSessionInfo((current) => ({ ...current, userId: "guest-user" }));
     setPage("auth");
   };
@@ -62,6 +64,7 @@ function App() {
           setQuiz={setQuiz}
           setGradeResult={setGradeResult}
           setRewardResult={setRewardResult}
+          setCompulsoryQuiz={setCompulsoryQuiz}
           sessionInfo={sessionInfo}
           setSessionInfo={setSessionInfo}
           onLogout={handleLogout}
@@ -74,6 +77,8 @@ function App() {
           setQuiz={setQuiz}
           setGradeResult={setGradeResult}
           setRewardResult={setRewardResult}
+          compulsoryQuiz={compulsoryQuiz}
+          setCompulsoryQuiz={setCompulsoryQuiz}
           sessionInfo={sessionInfo}
           onLogout={handleLogout}
         />

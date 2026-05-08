@@ -1,23 +1,7 @@
-import { GoogleGenerativeAI, type Part } from "@google/generative-ai";
 import dotenv from "dotenv";
+import { getLLMProvider, type LLMProvider } from "./llmProvider.js";
 
 dotenv.config({ quiet: true });
-
-const QUIZ_MODEL_NAMES = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-flash-latest",
-];
-
-function getGeminiClient() {
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-
-  if (!geminiApiKey) {
-    throw new Error("Missing GEMINI_API_KEY. Add it to backend/.env before generating quizzes.");
-  }
-
-  return new GoogleGenerativeAI(geminiApiKey);
-}
 
 function isRetryableGeminiError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -115,13 +99,21 @@ function countWords(text: string): number {
 }
 
 function parseQuizJson(rawText: string): Omit<Quiz, "generatedAt"> {
-  const cleaned = rawText.replace(/```json|```/g, "").trim();
+  // Strip markdown fences if present
+  let cleaned = rawText.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+
+  // If the model added preamble text, extract the first JSON object
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleaned = jsonMatch[0];
+  }
 
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(cleaned);
   } catch {
+    console.error("[QuizService] Raw LLM output that failed JSON parse:", rawText.slice(0, 300));
     throw new Error("Gemini returned invalid JSON. Please try generating the quiz again.");
   }
 
@@ -259,7 +251,7 @@ export async function generateQuiz(
     throw new Error("Uploaded PDF is empty. Please choose a valid PDF file.");
   }
 
-  const prompt = pdfStudyMaterial
+  const systemPrompt = pdfStudyMaterial
     ? `${QUIZ_SYSTEM_PROMPT}\n\nRead the attached PDF study material${
         pdfStudyMaterial.name ? ` named "${pdfStudyMaterial.name}"` : ""
       } and generate the quiz from ONLY that PDF. ${
@@ -268,25 +260,31 @@ export async function generateQuiz(
           : ""
       }`
     : `${QUIZ_SYSTEM_PROMPT}\n\nHere is the study material:\n\n${studyData}`;
-  const genAI = getGeminiClient();
+
+  const llm = getLLMProvider();
+
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAY_MS = 20_000; // 20s — matches the retryDelay Google returns
+
   let lastError: unknown;
 
-  for (const modelName of QUIZ_MODEL_NAMES) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const parts: Array<string | Part> = pdfStudyMaterial
-        ? [
-            { text: prompt },
-            {
-              inlineData: {
+      console.log(`[QuizService] generateQuiz attempt ${attempt}/${MAX_ATTEMPTS}`);
+
+      const rawText = await llm.generateContent({
+        prompt: "Generate the quiz now. Remember to respond ONLY with valid JSON.",
+        systemPrompt,
+        ...(pdfStudyMaterial
+          ? {
+              pdfData: {
                 mimeType: pdfStudyMaterial.mimeType,
                 data: pdfStudyMaterial.data,
               },
-            },
-          ]
-        : [prompt];
-      const result = await model.generateContent(parts);
-      const rawText = result.response.text();
+            }
+          : {}),
+      });
+
       const parsed = parseQuizJson(rawText);
 
       return {
@@ -296,9 +294,21 @@ export async function generateQuiz(
     } catch (error) {
       lastError = error;
 
-      if (!isRetryableGeminiError(error)) {
-        throw error;
+      const isQuota =
+        error instanceof Error &&
+        (error.message.includes("429") ||
+          error.message.includes("quota") ||
+          error.message.includes("Quota") ||
+          error.message.includes("Too Many Requests"));
+
+      if (isQuota && attempt < MAX_ATTEMPTS) {
+        console.warn(`[QuizService] Quota hit. Waiting ${RETRY_DELAY_MS / 1000}s before retry...`);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        continue;
       }
+
+      // Not a quota error — fail immediately
+      break;
     }
   }
 
@@ -469,18 +479,16 @@ export function updateEPBalance(userId: string, epEarned: number): number {
   return updated;
 }
 export async function generateTopicFromStudyData(studyData: string) {
-  const genAI = getGeminiClient();
+  const llm = getLLMProvider();
 
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
-  });
-
-  const result = await model.generateContent(`
+  const rawText = await llm.generateContent({
+    prompt: `
 Give only the main study topic name from this text in under 4 words.
 
 Text:
 ${studyData}
-  `);
+  `
+  });
 
-  return result.response.text().trim();
+  return rawText.trim();
 }

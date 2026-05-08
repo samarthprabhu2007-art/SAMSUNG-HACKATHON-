@@ -1,5 +1,12 @@
-import { sendTelegramMessage } from "./src/services/telegramService.js";
+import dotenv from "dotenv";
+dotenv.config();
+
+import { gateway } from "./src/core/Gateway.js";
+import { telegramAdapter } from "./src/channels/TelegramAdapter.js";
+import { piEngine } from "./src/core/PiEngine.js";
+import { daemon } from "./src/core/Daemon.js";
 import express, { type Request, type Response } from "express";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +20,7 @@ import {
   type Quiz,
   type UserAnswers,
 } from "./src/services/QuizService.js";
+import { getLLMProvider } from "./src/services/llmProvider.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -20,13 +28,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const usersMemoryPath = path.resolve(__dirname, "../openclaw/memory/users.yaml");
 const testResultsMemoryPath = path.resolve(__dirname, "../openclaw/memory/test_results.yaml");
+const studySessionsMemoryPath = path.resolve(__dirname, "../openclaw/memory/study_sessions.yaml");
+const SCREEN_ANALYSIS_CACHE_TTL_MS = 5 * 60 * 1000;
+const GROQ_VISION_MODEL =
+  process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+const SCREEN_MONITOR_PROVIDER = process.env.SCREEN_MONITOR_PROVIDER || "groq";
+const screenAnalysisCache = new Map<string, { expiresAt: number; analysis: ScreenAnalysis }>();
 
 app.use(express.json({ limit: "30mb" }));
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Headers", "Content-Type");
-  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
 
   if (req.method === "OPTIONS") {
     res.sendStatus(204);
@@ -100,6 +114,16 @@ async function loadTestResultsMemory() {
   }
 }
 
+async function loadStudySessionsMemory() {
+  await mkdir(path.dirname(studySessionsMemoryPath), { recursive: true });
+
+  try {
+    return await readFile(studySessionsMemoryPath, "utf8");
+  } catch {
+    return "study_sessions: []\n";
+  }
+}
+
 type StoredTestResult = {
   id: string;
   userId: string;
@@ -116,12 +140,44 @@ type StoredTestResult = {
   breakdown: unknown;
 };
 
+type StoredStudySession = {
+  id: string;
+  userId: string;
+  topic: string;
+  status: "pending_quiz" | "completed";
+  mode: "quiz_now" | "quiz_later" | "previous_quiz";
+  sessionTimeMinutes: number;
+  studyDataPreview: string;
+  quiz: Quiz;
+  startedAt: string;
+  endedAt: string;
+  completedAt?: string;
+  endedEarly: boolean;
+};
+
+type ScreenAnalysis = {
+  classification: "productive" | "neutral" | "distracting";
+  confidence: number;
+  reason: string;
+  detectedContent: string;
+  wardenAlert: boolean;
+  cached?: boolean;
+};
+
 function parseStoredResults(memory: string): StoredTestResult[] {
   return memory
     .split(/\r?\n/)
     .map((line) => line.match(/^\s*-\s*(\{.*\})\s*$/)?.[1])
     .filter((line): line is string => Boolean(line))
     .map((line) => JSON.parse(line) as StoredTestResult);
+}
+
+function parseStoredSessions(memory: string): StoredStudySession[] {
+  return memory
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*-\s*(\{.*\})\s*$/)?.[1])
+    .filter((line): line is string => Boolean(line))
+    .map((line) => JSON.parse(line) as StoredStudySession);
 }
 
 async function writeStoredResults(results: StoredTestResult[]) {
@@ -131,6 +187,193 @@ async function writeStoredResults(results: StoredTestResult[]) {
       : `test_results:\n${results.map((entry) => `  - ${JSON.stringify(entry)}`).join("\n")}\n`;
 
   await writeFile(testResultsMemoryPath, lines, "utf8");
+}
+
+async function writeStoredSessions(sessions: StoredStudySession[]) {
+  const lines =
+    sessions.length === 0
+      ? "study_sessions: []\n"
+      : `study_sessions:\n${sessions.map((entry) => `  - ${JSON.stringify(entry)}`).join("\n")}\n`;
+
+  await writeFile(studySessionsMemoryPath, lines, "utf8");
+}
+
+function parseScreenAnalysis(rawText: string): ScreenAnalysis {
+  let cleaned = rawText.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+
+  if (jsonMatch) {
+    cleaned = jsonMatch[0];
+  }
+
+  const parsed = JSON.parse(cleaned) as {
+    classification?: unknown;
+    confidence?: unknown;
+    reason?: unknown;
+    detectedContent?: unknown;
+  };
+  const allowed = ["productive", "neutral", "distracting"];
+  const classification =
+    typeof parsed.classification === "string" && allowed.includes(parsed.classification)
+      ? parsed.classification
+      : "neutral";
+
+  return {
+    classification: classification as ScreenAnalysis["classification"],
+    confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+    reason:
+      typeof parsed.reason === "string"
+        ? parsed.reason
+        : "Could not confidently classify this screen.",
+    detectedContent:
+      typeof parsed.detectedContent === "string" ? parsed.detectedContent : "Unknown",
+    wardenAlert: classification === "distracting",
+  };
+}
+
+function getScreenMonitorPrompt(topic: string) {
+  return `You are the Focus Monitor for a study app.
+The user is supposed to study this topic: "${topic}".
+
+Classify the screenshot as:
+- productive: clearly related to the study topic or study tools
+- neutral: unclear, dashboard, notes, browser chrome, or not enough evidence
+- distracting: entertainment, social media, games, unrelated video, shopping, chat, or clearly off-topic work
+
+Return ONLY valid JSON with this exact shape:
+{
+  "classification": "productive|neutral|distracting",
+  "confidence": 0.0,
+  "detectedContent": "short description",
+  "reason": "short reason"
+}`;
+}
+
+async function analyzeScreenWithGroq(topic: string, cleanedImage: string): Promise<ScreenAnalysis> {
+  const apiKey = process.env.GROQ_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Missing GROQ_API_KEY.");
+  }
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_VISION_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: getScreenMonitorPrompt(topic),
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${cleanedImage}`,
+              },
+            },
+          ],
+        },
+      ],
+      temperature: 0,
+      max_completion_tokens: 300,
+      response_format: { type: "json_object" },
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Groq screen analysis failed: ${response.status} ${errorText.slice(0, 240)}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error("Groq returned an empty screen analysis.");
+  }
+
+  return parseScreenAnalysis(content);
+}
+
+async function analyzeScreenRelevance(topic: string, imageData: string) {
+  const cleanedImage = imageData.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
+  const cacheKey = createHash("sha256")
+    .update(topic.trim().toLowerCase())
+    .update(":")
+    .update(cleanedImage)
+    .digest("hex");
+  const cached = screenAnalysisCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return { ...cached.analysis, cached: true };
+  }
+
+  let analysis: ScreenAnalysis;
+
+  if (SCREEN_MONITOR_PROVIDER === "groq") {
+    try {
+      analysis = await analyzeScreenWithGroq(topic, cleanedImage);
+    } catch (error) {
+      if (process.env.SCREEN_MONITOR_FALLBACK_TO_GEMINI === "true") {
+        console.warn("[ScreenMonitor] Groq failed, falling back to Gemini:", error);
+        const llm = getLLMProvider();
+        const rawText = await llm.generateContent({
+          prompt: "Classify the attached screenshot now.",
+          systemPrompt: getScreenMonitorPrompt(topic),
+          imageData: {
+            mimeType: "image/jpeg",
+            data: cleanedImage,
+          },
+        });
+        analysis = parseScreenAnalysis(rawText);
+      } else {
+        console.warn("[ScreenMonitor] Groq failed. Gemini fallback is disabled:", error);
+        analysis = {
+          classification: "neutral",
+          confidence: 0,
+          detectedContent: "Screen check unavailable",
+          reason: "Groq screen analysis failed, and Gemini fallback is disabled.",
+          wardenAlert: false,
+        };
+      }
+    }
+  } else if (SCREEN_MONITOR_PROVIDER === "gemini") {
+    const llm = getLLMProvider();
+    const rawText = await llm.generateContent({
+      prompt: "Classify the attached screenshot now.",
+      systemPrompt: getScreenMonitorPrompt(topic),
+      imageData: {
+        mimeType: "image/jpeg",
+        data: cleanedImage,
+      },
+    });
+    analysis = parseScreenAnalysis(rawText);
+  } else {
+    analysis = {
+      classification: "neutral",
+      confidence: 0,
+      detectedContent: "Screen monitor disabled",
+      reason: `Unknown screen monitor provider: ${SCREEN_MONITOR_PROVIDER}`,
+      wardenAlert: false,
+    };
+  }
+
+  screenAnalysisCache.set(cacheKey, {
+    expiresAt: Date.now() + SCREEN_ANALYSIS_CACHE_TTL_MS,
+    analysis,
+  });
+
+  return analysis;
 }
 
 async function updateUserEPBalance(userId: string, epBalance: number) {
@@ -247,6 +490,15 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/screen/provider", (_req, res) => {
+  res.json({
+    provider: SCREEN_MONITOR_PROVIDER,
+    groqConfigured: Boolean(process.env.GROQ_API_KEY),
+    groqModel: GROQ_VISION_MODEL,
+    geminiFallbackEnabled: process.env.SCREEN_MONITOR_FALLBACK_TO_GEMINI === "true",
+  });
+});
+
 app.get("/", (_req, res) => {
   res.type("html").send(`
     <!doctype html>
@@ -276,6 +528,8 @@ app.get("/", (_req, res) => {
           <li><code>POST /quiz/generate</code></li>
           <li><code>POST /quiz/grade</code></li>
           <li><code>POST /rewards/calculate</code></li>
+          <li><code>GET /sessions/:userId/pending</code></li>
+          <li><code>POST /screen/analyze</code></li>
           <li><code>GET /ep/:userId</code></li>
         </ul>
       </body>
@@ -399,6 +653,146 @@ app.post("/progress/:userId", async (req: Request, res: Response) => {
     await updateUserEPBalance(userId, entry.epBalance);
 
     res.json({ entry, history: [entry, ...userHistory] });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.get("/sessions/:userId/pending", async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId;
+
+    if (!userId || Array.isArray(userId)) {
+      res.status(400).json({ error: "userId is required." });
+      return;
+    }
+
+    const sessions = parseStoredSessions(await loadStudySessionsMemory())
+      .filter((entry) => entry.userId === userId && entry.status === "pending_quiz")
+      .sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime());
+
+    res.json({ userId, sessions });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.post("/sessions", async (req: Request, res: Response) => {
+  try {
+    const {
+      userId,
+      topic,
+      quiz,
+      mode,
+      status,
+      sessionTimeMinutes,
+      studyDataPreview,
+      startedAt,
+      endedAt,
+      endedEarly,
+    } = req.body as Record<string, unknown>;
+
+    if (
+      typeof userId !== "string" ||
+      typeof topic !== "string" ||
+      !quiz ||
+      typeof quiz !== "object" ||
+      !Array.isArray((quiz as Quiz).questions) ||
+      typeof sessionTimeMinutes !== "number"
+    ) {
+      res.status(400).json({ error: "Invalid study session payload." });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const entry: StoredStudySession = {
+      id: `${userId}-${Date.now()}`,
+      userId,
+      topic,
+      status: status === "completed" ? "completed" : "pending_quiz",
+      mode:
+        mode === "quiz_later" || mode === "previous_quiz" || mode === "quiz_now"
+          ? mode
+          : "quiz_now",
+      sessionTimeMinutes,
+      studyDataPreview: typeof studyDataPreview === "string" ? studyDataPreview.slice(0, 240) : "",
+      quiz: quiz as Quiz,
+      startedAt: typeof startedAt === "string" ? startedAt : now,
+      endedAt: typeof endedAt === "string" ? endedAt : now,
+      endedEarly: endedEarly === true,
+    };
+    const sessions = parseStoredSessions(await loadStudySessionsMemory());
+
+    await writeStoredSessions([entry, ...sessions]);
+    res.json({ session: entry });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.patch("/sessions/:sessionId", async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const { status } = req.body as { status?: unknown };
+
+    if (!sessionId || Array.isArray(sessionId)) {
+      res.status(400).json({ error: "sessionId is required." });
+      return;
+    }
+
+    if (status !== "completed" && status !== "pending_quiz") {
+      res.status(400).json({ error: "status must be completed or pending_quiz." });
+      return;
+    }
+
+    const sessions = parseStoredSessions(await loadStudySessionsMemory());
+    const index = sessions.findIndex((entry) => entry.id === sessionId);
+
+    if (index === -1) {
+      res.status(404).json({ error: "Study session not found." });
+      return;
+    }
+
+    const current = sessions[index];
+
+    if (!current) {
+      res.status(404).json({ error: "Study session not found." });
+      return;
+    }
+
+    const next: StoredStudySession = {
+      ...current,
+      status,
+      ...(status === "completed" ? { completedAt: new Date().toISOString() } : {}),
+    };
+
+    sessions[index] = next;
+    await writeStoredSessions(sessions);
+    res.json({ session: next });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.post("/screen/analyze", async (req: Request, res: Response) => {
+  try {
+    const { topic, imageData } = req.body as {
+      topic?: unknown;
+      imageData?: unknown;
+    };
+
+    if (typeof topic !== "string" || topic.trim() === "") {
+      res.status(400).json({ error: "topic is required." });
+      return;
+    }
+
+    if (typeof imageData !== "string" || imageData.trim() === "") {
+      res.status(400).json({ error: "imageData is required." });
+      return;
+    }
+
+    const analysis = await analyzeScreenRelevance(topic, imageData);
+    res.json({ analysis });
   } catch (error) {
     sendError(res, error);
   }
@@ -577,7 +971,9 @@ app.post("/telegram/study-start", async (req: Request, res: Response) => {
       }
     }
 
-    await sendTelegramMessage(
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  if (chatId) {
+    await telegramAdapter.sendMessage(chatId,
       [
         "Study Session Started",
         "",
@@ -587,16 +983,19 @@ app.post("/telegram/study-start", async (req: Request, res: Response) => {
         "Stay focused.",
       ].join("\n")
     );
-
-    res.json({ ok: true });
-  } catch (error) {
-    sendError(res, error);
   }
+
+  res.json({ ok: true });
+} catch (error) {
+  sendError(res, error);
+}
 });
 
 app.post("/telegram/study-end", async (_req: Request, res: Response) => {
-  try {
-    await sendTelegramMessage(
+try {
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  if (chatId) {
+    await telegramAdapter.sendMessage(chatId,
       [
         "Study Session Ended",
         "",
@@ -604,22 +1003,25 @@ app.post("/telegram/study-end", async (_req: Request, res: Response) => {
         "Now take the quiz.",
       ].join("\n")
     );
-
-    res.json({ ok: true });
-  } catch (error) {
-    sendError(res, error);
   }
+
+  res.json({ ok: true });
+} catch (error) {
+  sendError(res, error);
+}
 });
 
 app.post("/telegram/quiz-start", async (req: Request, res: Response) => {
-  try {
-    const { topic, totalQuestions } = req.body as {
-      topic?: unknown;
-      totalQuestions?: unknown;
-    };
-    const quizTopic = typeof topic === "string" && topic.trim() ? topic.trim() : "Quiz";
+try {
+  const { topic, totalQuestions } = req.body as {
+    topic?: unknown;
+    totalQuestions?: unknown;
+  };
+  const quizTopic = typeof topic === "string" && topic.trim() ? topic.trim() : "Quiz";
 
-    await sendTelegramMessage(
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  if (chatId) {
+    await telegramAdapter.sendMessage(chatId,
       [
         "Quiz Started",
         "",
@@ -629,27 +1031,30 @@ app.post("/telegram/quiz-start", async (req: Request, res: Response) => {
         "Answer carefully.",
       ].join("\n")
     );
-
-    res.json({ ok: true });
-  } catch (error) {
-    sendError(res, error);
   }
+
+  res.json({ ok: true });
+} catch (error) {
+  sendError(res, error);
+}
 });
 
 app.post("/telegram/quiz-end", async (req: Request, res: Response) => {
-  try {
-    const { topic, score, maxScore, accuracy, epEarned } = req.body as {
-      topic?: unknown;
-      score?: unknown;
-      maxScore?: unknown;
-      accuracy?: unknown;
-      epEarned?: unknown;
-    };
-    const quizTopic = typeof topic === "string" && topic.trim() ? topic.trim() : "Quiz";
-    const accuracyPercent =
-      typeof accuracy === "number" ? `${Math.round(accuracy * 100)}%` : "unknown";
+try {
+  const { topic, score, maxScore, accuracy, epEarned } = req.body as {
+    topic?: unknown;
+    score?: unknown;
+    maxScore?: unknown;
+    accuracy?: unknown;
+    epEarned?: unknown;
+  };
+  const quizTopic = typeof topic === "string" && topic.trim() ? topic.trim() : "Quiz";
+  const accuracyPercent =
+    typeof accuracy === "number" ? `${Math.round(accuracy * 100)}%` : "unknown";
 
-    await sendTelegramMessage(
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  if (chatId) {
+    await telegramAdapter.sendMessage(chatId,
       [
         "Quiz Ended",
         "",
@@ -659,16 +1064,26 @@ app.post("/telegram/quiz-end", async (req: Request, res: Response) => {
         `EP earned: ${Number(epEarned) || 0}`,
       ].join("\n")
     );
-
-    res.json({ ok: true });
-  } catch (error) {
-    sendError(res, error);
   }
+
+  res.json({ ok: true });
+} catch (error) {
+  sendError(res, error);
+}
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+app.listen(PORT, async () => {
+console.log(`Backend running on http://localhost:${PORT}`);
 
-  sendTelegramMessage("Telegram Bot Connected Successfully");
+// Initialize channels
+await telegramAdapter.start();
+
+// Start background daemon
+daemon.start();
+
+const chatId = process.env.TELEGRAM_CHAT_ID || "";
+if (chatId) {
+  telegramAdapter.sendMessage(chatId, "OpenClaw Gateway and Pi Engine Connected Successfully");
+}
 });
 
