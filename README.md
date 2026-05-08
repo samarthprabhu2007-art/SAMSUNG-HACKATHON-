@@ -7,6 +7,7 @@ GrindGuard is a study-enforcement productivity app that makes you *prove* you le
 ---
 
 ## Live Demo
+https://drive.google.com/file/d/1YwucDdUoMkjgEECS_AgHrgoVXK5ZeSt-/view?usp=sharing
 
 - **Frontend:** https://samsung-hackathon-bice.vercel.app/
 - **Backend API:** https://samsung-hackathon-backend.onrender.com
