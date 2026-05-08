@@ -468,3 +468,19 @@ export function updateEPBalance(userId: string, epEarned: number): number {
   epDatabase[userId] = updated;
   return updated;
 }
+export async function generateTopicFromStudyData(studyData: string) {
+  const genAI = getGeminiClient();
+
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+  });
+
+  const result = await model.generateContent(`
+Give only the main study topic name from this text in under 4 words.
+
+Text:
+${studyData}
+  `);
+
+  return result.response.text().trim();
+}

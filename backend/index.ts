@@ -1,3 +1,4 @@
+import { sendTelegramMessage } from "./src/services/telegramService.js";
 import express, { type Request, type Response } from "express";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -5,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   calculateRewards,
   generateQuiz,
+  generateTopicFromStudyData,
   getEPBalance,
   gradeQuiz,
   updateEPBalance,
@@ -558,6 +560,115 @@ app.get("/ep/:userId", async (req: Request, res: Response) => {
   }
 });
 
+app.post("/telegram/study-start", async (req: Request, res: Response) => {
+  try {
+    const { studyData, duration } = req.body as {
+      studyData?: unknown;
+      duration?: unknown;
+    };
+    const safeStudyData = typeof studyData === "string" ? studyData : "";
+    let topic = "Study Session";
+
+    if (safeStudyData.trim() !== "") {
+      try {
+        topic = (await generateTopicFromStudyData(safeStudyData)) || topic;
+      } catch (error) {
+        console.warn("Could not generate Telegram study topic:", error);
+      }
+    }
+
+    await sendTelegramMessage(
+      [
+        "Study Session Started",
+        "",
+        `Topic: ${topic}`,
+        `Duration: ${Number(duration) || "unknown"} minutes`,
+        "",
+        "Stay focused.",
+      ].join("\n")
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.post("/telegram/study-end", async (_req: Request, res: Response) => {
+  try {
+    await sendTelegramMessage(
+      [
+        "Study Session Ended",
+        "",
+        "Great work.",
+        "Now take the quiz.",
+      ].join("\n")
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.post("/telegram/quiz-start", async (req: Request, res: Response) => {
+  try {
+    const { topic, totalQuestions } = req.body as {
+      topic?: unknown;
+      totalQuestions?: unknown;
+    };
+    const quizTopic = typeof topic === "string" && topic.trim() ? topic.trim() : "Quiz";
+
+    await sendTelegramMessage(
+      [
+        "Quiz Started",
+        "",
+        `Topic: ${quizTopic}`,
+        `Questions: ${Number(totalQuestions) || "unknown"}`,
+        "",
+        "Answer carefully.",
+      ].join("\n")
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.post("/telegram/quiz-end", async (req: Request, res: Response) => {
+  try {
+    const { topic, score, maxScore, accuracy, epEarned } = req.body as {
+      topic?: unknown;
+      score?: unknown;
+      maxScore?: unknown;
+      accuracy?: unknown;
+      epEarned?: unknown;
+    };
+    const quizTopic = typeof topic === "string" && topic.trim() ? topic.trim() : "Quiz";
+    const accuracyPercent =
+      typeof accuracy === "number" ? `${Math.round(accuracy * 100)}%` : "unknown";
+
+    await sendTelegramMessage(
+      [
+        "Quiz Ended",
+        "",
+        `Topic: ${quizTopic}`,
+        `Score: ${Number(score) || 0} / ${Number(maxScore) || 0}`,
+        `Accuracy: ${accuracyPercent}`,
+        `EP earned: ${Number(epEarned) || 0}`,
+      ].join("\n")
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
+
+  sendTelegramMessage("Telegram Bot Connected Successfully");
 });
+

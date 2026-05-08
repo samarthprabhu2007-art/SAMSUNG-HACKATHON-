@@ -1,4 +1,5 @@
-﻿import { useEffect, useState } from "react";
+﻿import axios from "axios";
+import { useEffect, useState } from "react";
 
 const API_BASE = "http://localhost:3000";
 
@@ -19,6 +20,14 @@ function readFileAsBase64(file) {
     reader.onerror = () => reject(new Error("Could not read the PDF file."));
     reader.readAsDataURL(file);
   });
+}
+
+async function sendTelegramNotification(path, body) {
+  try {
+    await axios.post(`${API_BASE}${path}`, body);
+  } catch (error) {
+    console.error("Telegram error:", error);
+  }
 }
 
 function StartSession({
@@ -53,10 +62,15 @@ function StartSession({
   }, [studyComplete, studyStarted]);
 
   useEffect(() => {
-    if (studyStarted && timeLeft === 0) {
-      Promise.resolve().then(() => setStudyComplete(true));
+    if (studyStarted && timeLeft === 0 && !studyComplete) {
+      const endStudySession = async () => {
+        setStudyComplete(true);
+        await sendTelegramNotification("/telegram/study-end");
+      };
+
+      endStudySession();
     }
-  }, [studyStarted, timeLeft]);
+  }, [studyComplete, studyStarted, timeLeft]);
 
   const wordCount = studyData.trim().match(/\S+/g)?.length ?? 0;
   const hasPdf = Boolean(pdfData);
@@ -129,7 +143,7 @@ function StartSession({
     }
   };
 
-  const handleStartStudy = () => {
+  const handleStartStudy = async () => {
     const minutes = Math.max(1, Number(sessionInfo.sessionTimeMinutes) || 10);
 
     setError("");
@@ -141,6 +155,12 @@ function StartSession({
     setTimeLeft(minutes * 60);
     setStudyComplete(false);
     setStudyStarted(true);
+
+    await sendTelegramNotification("/telegram/study-start", {
+      studyData,
+      duration: minutes,
+    });
+
     prepareQuiz();
   };
 

@@ -67,11 +67,24 @@ async function saveProgressEntry({ quiz, gradeResult, rewardResult, sessionInfo,
   return data.entry;
 }
 
+async function sendTelegramNotification(path, body) {
+  try {
+    await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    console.error("Telegram error:", error);
+  }
+}
+
 function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, sessionInfo, onLogout }) {
   const [answers, setAnswers] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(QUIZ_SECONDS);
+  const quizStartNotifiedRef = useRef(false);
   const submittedRef = useRef(false);
 
   const answeredCount = useMemo(
@@ -137,6 +150,15 @@ function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, session
         sessionInfo,
         streakMultiplier,
       });
+
+      await sendTelegramNotification("/telegram/quiz-end", {
+        topic: quiz.topic,
+        score: gradeData.gradeResult.totalScore,
+        maxScore: gradeData.gradeResult.maxPossibleScore,
+        accuracy: gradeData.gradeResult.accuracy,
+        epEarned: rewardData.rewardResult.epEarned,
+      });
+
       setGradeResult(gradeData.gradeResult);
       setRewardResult({
         ...rewardData.rewardResult,
@@ -152,6 +174,18 @@ function Quiz({ setPage, quiz, setQuiz, setGradeResult, setRewardResult, session
       setLoading(false);
     }
   }, [answers, quiz, sessionInfo, setGradeResult, setPage, setQuiz, setRewardResult]);
+
+  useEffect(() => {
+    if (!quiz || quizStartNotifiedRef.current) {
+      return;
+    }
+
+    quizStartNotifiedRef.current = true;
+    sendTelegramNotification("/telegram/quiz-start", {
+      topic: quiz.topic,
+      totalQuestions: quiz.questions.length,
+    });
+  }, [quiz]);
 
   useEffect(() => {
     if (!quiz || submittedRef.current) {
