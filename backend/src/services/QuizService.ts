@@ -33,6 +33,15 @@ export interface PdfStudyMaterial {
   name?: string;
 }
 
+export interface StudentQuizProfile {
+  standard?: string;
+  mainSubject?: string;
+  currentTopic?: string;
+  learningGoal?: string;
+  targetExam?: string;
+  dailyStudyTime?: string;
+}
+
 const QUIZ_SYSTEM_PROMPT = `You are a strict quiz generator for a productivity app called GrindGuard.
 Your job is to generate exactly 12 multiple choice questions based on the study material provided.
 
@@ -96,6 +105,37 @@ function isQuestionTier(value: unknown): value is QuestionTier {
 
 function countWords(text: string): number {
   return text.trim().match(/\S+/g)?.length ?? 0;
+}
+
+function formatStudentProfile(profile?: StudentQuizProfile): string {
+  if (!profile) {
+    return "";
+  }
+
+  const rows = [
+    ["Class/standard", profile.standard],
+    ["Main subject", profile.mainSubject],
+    ["Current topic/chapter", profile.currentTopic],
+    ["Learning goal", profile.learningGoal],
+    ["Target exam/test", profile.targetExam],
+    ["Daily study time", profile.dailyStudyTime],
+  ].filter((row): row is [string, string] => typeof row[1] === "string" && row[1].trim() !== "");
+
+  if (rows.length === 0) {
+    return "";
+  }
+
+  return [
+    "Student profile from signup:",
+    ...rows.map(([label, value]) => `- ${label}: ${value.trim()}`),
+    "",
+    "Use this profile to tune wording, difficulty, and exam style:",
+    "- Match the student's class/standard level.",
+    "- Prefer examples and question framing from the main subject and target exam when the study material supports it.",
+    "- If a current topic/chapter is provided, use it to choose the most relevant parts of the material.",
+    "- Respect the learning goal: recall-heavy for remembering, practice-style for questions/tests, and mixed difficulty for discipline.",
+    "- Still generate questions ONLY from the provided study material or PDF. Do not invent syllabus facts.",
+  ].join("\n");
 }
 
 function parseQuizJson(rawText: string): Omit<Quiz, "generatedAt"> {
@@ -239,7 +279,8 @@ function validateGeneratedQuiz(value: unknown): Omit<Quiz, "generatedAt"> {
 
 export async function generateQuiz(
   studyData: string,
-  pdfStudyMaterial?: PdfStudyMaterial
+  pdfStudyMaterial?: PdfStudyMaterial,
+  studentProfile?: StudentQuizProfile
 ): Promise<Quiz> {
   if (!pdfStudyMaterial && countWords(studyData) < 300) {
     throw new Error(
@@ -251,6 +292,7 @@ export async function generateQuiz(
     throw new Error("Uploaded PDF is empty. Please choose a valid PDF file.");
   }
 
+  const studentProfilePrompt = formatStudentProfile(studentProfile);
   const systemPrompt = pdfStudyMaterial
     ? `${QUIZ_SYSTEM_PROMPT}\n\nRead the attached PDF study material${
         pdfStudyMaterial.name ? ` named "${pdfStudyMaterial.name}"` : ""
@@ -258,8 +300,10 @@ export async function generateQuiz(
         studyData.trim()
           ? `Additional notes from the student:\n\n${studyData}`
           : ""
-      }`
-    : `${QUIZ_SYSTEM_PROMPT}\n\nHere is the study material:\n\n${studyData}`;
+      }${studentProfilePrompt ? `\n\n${studentProfilePrompt}` : ""}`
+    : `${QUIZ_SYSTEM_PROMPT}\n\nHere is the study material:\n\n${studyData}${
+        studentProfilePrompt ? `\n\n${studentProfilePrompt}` : ""
+      }`;
 
   const llm = getLLMProvider();
 

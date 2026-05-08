@@ -9,6 +9,14 @@ import Quiz from "./pages/Quiz";
 import Rewards from "./pages/Rewards";
 import Progress from "./pages/Progress";
 
+function readStoredStudentProfile() {
+  try {
+    return JSON.parse(localStorage.getItem("studentProfile") || "null");
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const [page, setPage] = useState("auth");
   const [quiz, setQuiz] = useState(null);
@@ -26,23 +34,29 @@ function App() {
     sessionTimeMinutes: 10,
     streakMultiplier: 1,
     userId: localStorage.getItem("userId") || "guest-user",
+    studentProfile: readStoredStudentProfile(),
   });
 
   const handleSetCurrentUser = (user) => {
     setCurrentUser(user);
-    setSessionInfo((current) => ({ ...current, userId: user.id }));
+    setSessionInfo((current) => ({
+      ...current,
+      userId: user.id,
+      studentProfile: user.survey || readStoredStudentProfile(),
+    }));
   };
 
   const handleLogout = () => {
     localStorage.removeItem("userId");
     localStorage.removeItem("userName");
     localStorage.removeItem("userEmail");
+    localStorage.removeItem("studentProfile");
     setCurrentUser(null);
     setQuiz(null);
     setGradeResult(null);
     setRewardResult(null);
     setCompulsoryQuiz(false);
-    setSessionInfo((current) => ({ ...current, userId: "guest-user" }));
+    setSessionInfo((current) => ({ ...current, userId: "guest-user", studentProfile: null }));
     setPage("auth");
   };
 

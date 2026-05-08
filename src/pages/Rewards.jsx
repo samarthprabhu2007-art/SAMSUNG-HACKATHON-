@@ -1,5 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 
+import { useRef } from "react";
+
 const API_BASE = "http://localhost:3000";
 const QUICK_BREAKS = [5, 10, 15, 30];
 
@@ -7,6 +9,18 @@ function formatTimer(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
   const seconds = (totalSeconds % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+async function sendTelegramNotification(path, body) {
+  try {
+    await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    console.error("Telegram error:", error);
+  }
 }
 
 function Rewards({ setPage, gradeResult, rewardResult, sessionInfo, onLogout }) {
@@ -24,6 +38,8 @@ function Rewards({ setPage, gradeResult, rewardResult, sessionInfo, onLogout }) 
   const confirmingBreak = Boolean(pendingBreak);
   const canSpendCustom =
     customCost > 0 && customCost <= epBalance && !activeBreak && !spending && !confirmingBreak;
+  const activeBreakDetailsRef = useRef(null);
+  const breakEndNotifiedRef = useRef(false);
 
   useEffect(() => {
     if (!userId) {
@@ -56,6 +72,22 @@ function Rewards({ setPage, gradeResult, rewardResult, sessionInfo, onLogout }) 
 
     return () => clearInterval(timer);
   }, [activeBreak]);
+
+  useEffect(() => {
+    const breakDetails = activeBreakDetailsRef.current;
+
+    if (breakSecondsLeft !== 0 || !breakDetails || breakEndNotifiedRef.current) {
+      return;
+    }
+
+    breakEndNotifiedRef.current = true;
+    sendTelegramNotification("/telegram/break-time", {
+      status: "ended",
+      activity: breakDetails.activity,
+      minutes: breakDetails.minutes,
+    });
+    activeBreakDetailsRef.current = null;
+  }, [breakSecondsLeft]);
 
   const maxBreakMessage = useMemo(() => {
     if (epBalance <= 0) {
@@ -109,8 +141,15 @@ function Rewards({ setPage, gradeResult, rewardResult, sessionInfo, onLogout }) 
       }
 
       setEpBalance(data.updatedBalance);
+      activeBreakDetailsRef.current = { activity: pendingBreak.activity, minutes };
+      breakEndNotifiedRef.current = false;
       setBreakSecondsLeft(minutes * 60);
       setPendingBreak(null);
+      sendTelegramNotification("/telegram/break-time", {
+        status: "started",
+        activity: pendingBreak.activity,
+        minutes,
+      });
     } catch (err) {
       setError(err.message);
     } finally {

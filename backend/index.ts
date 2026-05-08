@@ -18,6 +18,7 @@ import {
   gradeQuiz,
   updateEPBalance,
   type Quiz,
+  type StudentQuizProfile,
   type UserAnswers,
 } from "./src/services/QuizService.js";
 import { getLLMProvider } from "./src/services/llmProvider.js";
@@ -92,6 +93,101 @@ function isValidEmail(email: string) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+type SignupSurvey = {
+  standard: string;
+  mainSubject: string;
+  currentTopic: string;
+  learningGoal: string;
+  targetExam: string;
+  dailyStudyTime: string;
+};
+
+const signupSurveyFields: Array<keyof SignupSurvey> = [
+  "standard",
+  "mainSubject",
+  "currentTopic",
+  "learningGoal",
+  "targetExam",
+  "dailyStudyTime",
+];
+type SignupSurveyYamlKey =
+  | "standard"
+  | "main_subject"
+  | "current_topic"
+  | "learning_goal"
+  | "target_exam"
+  | "daily_study_time";
+
+function normalizeSignupSurvey(value: unknown): SignupSurvey {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Please complete the signup survey.");
+  }
+
+  const survey = value as Record<string, unknown>;
+  const normalized = signupSurveyFields.reduce((result, field) => {
+    const answer = survey[field];
+
+    if (typeof answer !== "string" || answer.trim() === "") {
+      throw new Error("Please complete the signup survey.");
+    }
+
+    return { ...result, [field]: answer.trim() };
+  }, {} as SignupSurvey);
+
+  return normalized;
+}
+
+function formatSignupSurvey(survey: SignupSurvey) {
+  const labels: Record<keyof SignupSurvey, string> = {
+    standard: "standard",
+    mainSubject: "main_subject",
+    currentTopic: "current_topic",
+    learningGoal: "learning_goal",
+    targetExam: "target_exam",
+    dailyStudyTime: "daily_study_time",
+  };
+
+  return [
+    "    survey:",
+    ...signupSurveyFields.map((field) => `      ${labels[field]}: ${yamlString(survey[field])}`),
+  ].join("\n");
+}
+
+function parseSignupSurveyFromUserBlock(lines: string[], startIndex: number, endIndex: number): SignupSurvey | undefined {
+  const labels: Record<SignupSurveyYamlKey, keyof SignupSurvey> = {
+    standard: "standard",
+    main_subject: "mainSubject",
+    current_topic: "currentTopic",
+    learning_goal: "learningGoal",
+    target_exam: "targetExam",
+    daily_study_time: "dailyStudyTime",
+  };
+  const survey = {} as SignupSurvey;
+  let foundAny = false;
+
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const match = lines[index]?.match(/^\s+(standard|main_subject|current_topic|learning_goal|target_exam|daily_study_time):\s*(.*)$/);
+
+    if (!match) {
+      continue;
+    }
+
+    const yamlKey = match[1] as SignupSurveyYamlKey;
+    const field = labels[yamlKey];
+    const rawValue = match[2]?.trim() || "";
+
+    try {
+      survey[field] = JSON.parse(rawValue);
+    } catch {
+      survey[field] = rawValue.replace(/^["']|["']$/g, "");
+    }
+
+    foundAny = true;
+  }
+
+  return foundAny ? survey : undefined;
 }
 
 async function loadUsersMemory() {
@@ -426,7 +522,7 @@ async function readUserEPBalance(userId: string) {
   return Number.isFinite(epBalance) ? epBalance : 0;
 }
 
-async function storeAuthEmail(name: string, email: string, mode: string) {
+async function storeAuthEmail(name: string, email: string, mode: string, survey?: SignupSurvey) {
   const current = await loadUsersMemory();
 
   const normalizedEmail = email.trim().toLowerCase();
@@ -460,12 +556,18 @@ async function storeAuthEmail(name: string, email: string, mode: string) {
     }
 
     const next = lines.join("\n");
+    const existingSurvey = parseSignupSurveyFromUserBlock(lines, emailLineIndex, userBlockEnd);
+
     await writeFile(usersMemoryPath, next, "utf8");
-    return { id: userId, name: name.trim(), email: normalizedEmail };
+    return { id: userId, name: name.trim(), email: normalizedEmail, survey: existingSurvey };
   }
 
   if (existingUser) {
     throw new Error("An account with this email already exists. Please login.");
+  }
+
+  if (!survey) {
+    throw new Error("Please complete the signup survey.");
   }
 
   const entry = [
@@ -474,6 +576,7 @@ async function storeAuthEmail(name: string, email: string, mode: string) {
     `    email: ${yamlString(normalizedEmail)}`,
     `    created_at: ${yamlString(new Date().toISOString())}`,
     `    last_login_at: ${yamlString(new Date().toISOString())}`,
+    formatSignupSurvey(survey),
     "    ep_balance: 0",
   ].join("\n");
 
@@ -483,7 +586,7 @@ async function storeAuthEmail(name: string, email: string, mode: string) {
       : `${current.trimEnd()}\n${entry}\n`;
 
   await writeFile(usersMemoryPath, next, "utf8");
-  return { id: userId, name: name.trim(), email: normalizedEmail };
+  return { id: userId, name: name.trim(), email: normalizedEmail, survey };
 }
 
 app.get("/health", (_req, res) => {
@@ -539,10 +642,11 @@ app.get("/", (_req, res) => {
 
 app.post("/auth/login", async (req: Request, res: Response) => {
   try {
-    const { name, email, mode } = req.body as {
+    const { name, email, mode, survey } = req.body as {
       name?: unknown;
       email?: unknown;
       mode?: unknown;
+      survey?: unknown;
     };
 
     if (typeof name !== "string" || name.trim() === "") {
@@ -561,7 +665,8 @@ app.post("/auth/login", async (req: Request, res: Response) => {
     }
 
     const authMode = mode === "login" ? "login" : "signup";
-    const user = await storeAuthEmail(name, email, authMode);
+    const signupSurvey = authMode === "signup" ? normalizeSignupSurvey(survey) : undefined;
+    const user = await storeAuthEmail(name, email, authMode, signupSurvey);
     res.json({ ok: true, user });
   } catch (error) {
     sendError(res, error);
@@ -800,7 +905,11 @@ app.post("/screen/analyze", async (req: Request, res: Response) => {
 
 app.post("/quiz/generate", async (req: Request, res: Response) => {
   try {
-    const { studyData, pdf } = req.body as { studyData?: unknown; pdf?: unknown };
+    const { studyData, pdf, studentProfile } = req.body as {
+      studyData?: unknown;
+      pdf?: unknown;
+      studentProfile?: unknown;
+    };
 
     if (typeof studyData !== "string") {
       res.status(400).json({ error: "studyData must be a string." });
@@ -829,7 +938,11 @@ app.post("/quiz/generate", async (req: Request, res: Response) => {
       };
     }
 
-    const quiz = await generateQuiz(studyData, pdfStudyMaterial);
+    const safeStudentProfile =
+      studentProfile && typeof studentProfile === "object" && !Array.isArray(studentProfile)
+        ? (studentProfile as StudentQuizProfile)
+        : undefined;
+    const quiz = await generateQuiz(studyData, pdfStudyMaterial, safeStudentProfile);
     res.json({ quiz });
   } catch (error) {
     sendError(res, error);
@@ -1002,6 +1115,86 @@ try {
         "Great work.",
         "Now take the quiz.",
       ].join("\n")
+    );
+  }
+
+  res.json({ ok: true });
+} catch (error) {
+  sendError(res, error);
+}
+});
+
+app.post("/telegram/focus-alert", async (req: Request, res: Response) => {
+try {
+  const { count, limit, detectedContent, reason, terminated } = req.body as {
+    count?: unknown;
+    limit?: unknown;
+    detectedContent?: unknown;
+    reason?: unknown;
+    terminated?: unknown;
+  };
+  const safeCount = Number(count) || 1;
+  const safeLimit = Number(limit) || 3;
+  const safeDetectedContent =
+    typeof detectedContent === "string" && detectedContent.trim()
+      ? detectedContent.trim()
+      : "Off-topic screen";
+  const safeReason =
+    typeof reason === "string" && reason.trim() ? reason.trim() : "Focus monitor marked it distracting.";
+
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  if (chatId) {
+    await telegramAdapter.sendMessage(chatId,
+      [
+        terminated ? "Study Session Terminated" : "Focus Warning",
+        "",
+        `Warning: ${Math.min(safeCount, safeLimit)}/${safeLimit}`,
+        `Detected: ${safeDetectedContent}`,
+        `Reason: ${safeReason}`,
+        "",
+        terminated
+          ? "Limit reached. The study session was stopped."
+          : "Please return to studying before the session is terminated.",
+      ].join("\n")
+    );
+  }
+
+  res.json({ ok: true });
+} catch (error) {
+  sendError(res, error);
+}
+});
+
+app.post("/telegram/break-time", async (req: Request, res: Response) => {
+try {
+  const { status, activity, minutes } = req.body as {
+    status?: unknown;
+    activity?: unknown;
+    minutes?: unknown;
+  };
+  const safeStatus = status === "ended" ? "ended" : "started";
+  const safeActivity =
+    typeof activity === "string" && activity.trim() ? activity.trim() : "Break";
+  const safeMinutes = Number(minutes) || 0;
+
+  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  if (chatId) {
+    await telegramAdapter.sendMessage(chatId,
+      safeStatus === "started"
+        ? [
+            "Enjoy Time Started",
+            "",
+            `Activity: ${safeActivity}`,
+            `Duration: ${safeMinutes || "unknown"} minutes`,
+            "",
+            "Have fun. Come back when the timer ends.",
+          ].join("\n")
+        : [
+            "Enjoy Time Ended",
+            "",
+            `Activity: ${safeActivity}`,
+            "Stop now please. Your EP break time is over.",
+          ].join("\n")
     );
   }
 

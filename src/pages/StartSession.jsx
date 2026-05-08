@@ -104,6 +104,7 @@ function StartSession({
   const monitorTopicRef = useRef("Current study material");
   const studyStartedAtRef = useRef("");
   const lastScreenFingerprintRef = useRef("");
+  const distractionCountRef = useRef(0);
 
   const wordCount = studyData.trim().match(/\S+/g)?.length ?? 0;
   const hasPdf = Boolean(pdfData);
@@ -173,6 +174,7 @@ function StartSession({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studyData,
+          studentProfile: sessionInfo.studentProfile,
           pdf: hasPdf
             ? {
                 data: pdfData,
@@ -452,19 +454,26 @@ function StartSession({
       );
 
       if (analysis.classification === "distracting") {
-        setDistractionCount((current) => {
-          const next = current + 1;
-          const message = `Off-topic screen detected (${next}/${DISTRACTION_REDIRECT_LIMIT}): ${analysis.detectedContent}`;
-          showFocusPopup(message);
+        const next = distractionCountRef.current + 1;
+        const message = `Off-topic screen detected (${next}/${DISTRACTION_REDIRECT_LIMIT}): ${analysis.detectedContent}`;
+        const sessionTerminated = next >= DISTRACTION_REDIRECT_LIMIT;
 
-          if (next >= DISTRACTION_REDIRECT_LIMIT) {
-            stopScreenMonitor();
-            window.alert("Focus monitor detected repeated distractions. Returning you to the dashboard.");
-            setPage("home");
-          }
-
-          return next;
+        distractionCountRef.current = next;
+        setDistractionCount(next);
+        showFocusPopup(message);
+        sendTelegramNotification("/telegram/focus-alert", {
+          count: next,
+          limit: DISTRACTION_REDIRECT_LIMIT,
+          detectedContent: analysis.detectedContent,
+          reason: analysis.reason,
+          terminated: sessionTerminated,
         });
+
+        if (sessionTerminated) {
+          stopScreenMonitor();
+          window.alert("Focus monitor detected repeated distractions. Returning you to the dashboard.");
+          setPage("home");
+        }
       } else {
         setMonitorAlert("");
       }
@@ -507,6 +516,7 @@ function StartSession({
       monitorVideoRef.current = video;
       setMonitorActive(true);
       setDistractionCount(0);
+      distractionCountRef.current = 0;
       lastScreenFingerprintRef.current = "";
       setMonitorAlert("");
       setMonitorStatus("Focus monitor is watching for off-topic screens.");
