@@ -1,4 +1,4 @@
-l# GrindGuard — Answer to Unlock
+# GrindGuard — Answer to Unlock
 
 > **Earn your breaks. Don't waste them.**
 
@@ -6,8 +6,19 @@ GrindGuard is a study-enforcement productivity app that makes you *prove* you le
 
 ---
 
+## Live Demo
+
+- **Frontend:** https://samsung-hackathon-bice.vercel.app/
+- **Backend API:** https://samsung-hackathon-backend.onrender.com
+- **Health Check:** https://samsung-hackathon-backend.onrender.com/health
+
+For local development, the frontend falls back to `http://localhost:3000`. In deployment, Vercel uses `VITE_API_BASE` to call the Render backend.
+
+---
+
 ## Table of Contents
 
+- [Live Demo](#live-demo)
 - [Overview](#overview)
 - [Core Loop](#core-loop)
 - [Features](#features)
@@ -187,6 +198,7 @@ cp backend/.env.example backend/.env
 | `TELEGRAM_CHAT_ID` | Optional | Your Telegram chat ID for alerts |
 | `LLM_PROVIDER` | Optional | Default: `gemini`. Set to `groq` to switch providers |
 | `PORT` | Optional | Backend port (default: `3000`) |
+| `VITE_API_BASE` | Deployment | Frontend API URL for Vercel, e.g. Render backend URL |
 
 **Getting a Gemini key:** Visit [aistudio.google.com](https://aistudio.google.com/app/apikey) → Create API key → free tier is sufficient.
 
