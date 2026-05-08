@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { API_BASE } from "../config/api";
 
-import { useRef } from "react";
-
-const API_BASE = "http://localhost:3000";
 const QUICK_BREAKS = [5, 10, 15, 30];
 
 function formatTimer(totalSeconds) {

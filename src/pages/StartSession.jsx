@@ -1,7 +1,7 @@
 import axios from "axios";
 import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "../config/api";
 
-const API_BASE = "http://localhost:3000";
 const MONITOR_INTERVAL_MS = 30000;
 const DISTRACTION_REDIRECT_LIMIT = 3;
 

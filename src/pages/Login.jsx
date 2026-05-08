@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { API_BASE } from "../config/api";
 
 const initialSurvey = {
   standard: "",
@@ -41,7 +42,7 @@ function Login({ setPage, setCurrentUser, mode = "login" }) {
     }
 
     try {
-      const response = await fetch("http://localhost:3000/auth/login", {
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, mode, survey: isSignup ? survey : undefined }),

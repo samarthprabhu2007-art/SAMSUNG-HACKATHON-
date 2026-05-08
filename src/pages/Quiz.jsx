@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { API_BASE } from "../config/api";
 
-const API_BASE = "http://localhost:3000";
 const QUIZ_SECONDS = 10 * 60;
 
 function formatTime(totalSeconds) {
