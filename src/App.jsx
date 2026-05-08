@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "./App.css";
 
 import AuthChoice from "./pages/AuthChoice";
 import Login from "./pages/Login";

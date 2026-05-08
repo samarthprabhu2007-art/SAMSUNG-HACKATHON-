@@ -642,19 +642,33 @@ function StartSession({
     </section>
   );
 
+  const timerDanger = studyStarted && timeLeft <= 60 && !studyComplete;
+
   return (
     <div style={container}>
+      <div style={bgOrb1} />
+      <div style={bgOrb2} />
+
       <div style={topBar}>
         <div style={navActions}>
-          <button onClick={() => setPage("home")} style={secondaryButton}>
-            Home
+          <button onClick={() => setPage("home")} style={secondaryButton}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(0,245,255,0.5)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(0,245,255,0.2)"; }}
+          >
+            ← Home
           </button>
-          <button onClick={onLogout} style={logoutButton}>
+          <button onClick={onLogout} style={logoutButton}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,0,110,0.15)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,0,110,0.08)"; }}
+          >
             Logout
           </button>
         </div>
-        <div style={brand}>Answer to Unlock</div>
-        <div style={timerBadge}>Study Timer {formatTime(timeLeft)}</div>
+        <div style={brand}>⚡ GrindGuard</div>
+        <div style={timerDanger ? timerBadgeDanger : (studyStarted ? timerBadgeActive : timerBadge)}>
+          <span style={timerLabel}>STUDY TIMER</span>
+          <span style={timerDanger ? timerValueDanger : timerValue}>{formatTime(timeLeft)}</span>
+        </div>
       </div>
 
       <main style={main}>
@@ -865,9 +879,23 @@ function StartSession({
 
 const container = {
   minHeight: "100vh",
-  background: "#0f172a",
-  color: "white",
-  fontFamily: "Arial, sans-serif",
+  width: "100%",
+  background: "linear-gradient(160deg, #020408 0%, #080c14 60%, #0a0818 100%)",
+  color: "#e8f4f8",
+  fontFamily: "'Inter', sans-serif",
+  position: "relative",
+  overflow: "hidden",
+};
+
+const bgOrb1 = {
+  position: "fixed", width: "700px", height: "700px", borderRadius: "50%",
+  background: "radial-gradient(circle, rgba(0,245,255,0.04) 0%, transparent 70%)",
+  top: "-300px", left: "-300px", pointerEvents: "none", zIndex: 0,
+};
+const bgOrb2 = {
+  position: "fixed", width: "600px", height: "600px", borderRadius: "50%",
+  background: "radial-gradient(circle, rgba(191,0,255,0.04) 0%, transparent 70%)",
+  bottom: "-200px", right: "-200px", pointerEvents: "none", zIndex: 0,
 };
 
 const topBar = {
@@ -875,14 +903,24 @@ const topBar = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "16px",
-  padding: "16px 28px",
-  background: "#111827",
-  borderBottom: "1px solid #334155",
+  padding: "14px 28px",
+  background: "rgba(8,12,20,0.9)",
+  backdropFilter: "blur(12px)",
+  borderBottom: "1px solid rgba(0,245,255,0.1)",
   flexWrap: "wrap",
+  position: "sticky",
+  top: 0,
+  zIndex: 10,
 };
 
 const brand = {
+  fontFamily: "'Orbitron', monospace",
+  fontSize: "1rem",
   fontWeight: 700,
+  background: "linear-gradient(135deg, #00f5ff, #bf00ff)",
+  WebkitBackgroundClip: "text",
+  WebkitTextFillColor: "transparent",
+  backgroundClip: "text",
 };
 
 const navActions = {
@@ -892,24 +930,70 @@ const navActions = {
 };
 
 const timerBadge = {
-  padding: "10px 14px",
-  borderRadius: "999px",
-  background: "#0f172a",
-  border: "1px solid #38bdf8",
-  color: "#bfdbfe",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  padding: "10px 20px",
+  borderRadius: "14px",
+  background: "rgba(0,245,255,0.05)",
+  border: "1px solid rgba(0,245,255,0.25)",
+  gap: "2px",
+};
+
+const timerBadgeActive = {
+  ...timerBadge,
+  border: "1px solid rgba(0,245,255,0.5)",
+  background: "rgba(0,245,255,0.08)",
+  boxShadow: "0 0 20px rgba(0,245,255,0.15)",
+  animation: "pulse-glow 2s ease-in-out infinite",
+};
+
+const timerBadgeDanger = {
+  ...timerBadge,
+  border: "1px solid rgba(255,0,110,0.5)",
+  background: "rgba(255,0,110,0.06)",
+  boxShadow: "0 0 20px rgba(255,0,110,0.2)",
+};
+
+const timerLabel = {
+  fontSize: "0.6rem",
+  fontFamily: "'Orbitron', monospace",
+  color: "#8ab4c4",
+  letterSpacing: "2px",
   fontWeight: 700,
+};
+
+const timerValue = {
+  fontSize: "2rem",
+  fontFamily: "'Orbitron', monospace",
+  fontWeight: 900,
+  color: "#00f5ff",
+  textShadow: "0 0 15px rgba(0,245,255,0.6), 0 0 40px rgba(0,245,255,0.3)",
+  letterSpacing: "3px",
+  animation: "timer-pulse 2s ease-in-out infinite",
+  lineHeight: 1,
+};
+
+const timerValueDanger = {
+  ...timerValue,
+  color: "#ff006e",
+  textShadow: "0 0 15px rgba(255,0,110,0.7), 0 0 40px rgba(255,0,110,0.4)",
+  animation: "timer-danger 0.8s ease-in-out infinite",
 };
 
 const main = {
   width: "min(1040px, calc(100% - 32px))",
   margin: "0 auto",
-  padding: "32px 0",
+  padding: "32px 0 48px",
+  position: "relative",
+  zIndex: 1,
 };
 
 const panel = {
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "8px",
+  background: "rgba(13,20,36,0.85)",
+  backdropFilter: "blur(12px)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "16px",
   padding: "28px",
   textAlign: "left",
 };
@@ -929,37 +1013,44 @@ const modeButton = {
   display: "grid",
   gap: "8px",
   padding: "16px",
-  borderRadius: "8px",
-  border: "1px solid #334155",
-  background: "#0f172a",
-  color: "white",
+  borderRadius: "12px",
+  border: "1px solid rgba(0,245,255,0.1)",
+  background: "rgba(0,0,0,0.3)",
+  color: "#e8f4f8",
   textAlign: "left",
   cursor: "pointer",
+  transition: "all 0.2s ease",
 };
 
 const activeModeButton = {
   ...modeButton,
-  borderColor: "#38bdf8",
-  background: "#075985",
+  borderColor: "rgba(0,245,255,0.5)",
+  background: "rgba(0,245,255,0.08)",
+  boxShadow: "0 0 16px rgba(0,245,255,0.12)",
 };
 
 const eyebrow = {
   margin: 0,
-  color: "#38bdf8",
-  fontSize: "0.85rem",
+  color: "#00f5ff",
+  fontSize: "0.75rem",
   fontWeight: 700,
   textTransform: "uppercase",
+  letterSpacing: "3px",
+  fontFamily: "'Orbitron', monospace",
 };
 
 const title = {
   margin: "8px 0",
-  color: "white",
-  fontSize: "2rem",
+  color: "#e8f4f8",
+  fontSize: "1.8rem",
+  fontFamily: "'Inter', sans-serif",
+  fontWeight: 700,
 };
 
 const subtitle = {
-  color: "#cbd5e1",
+  color: "#8ab4c4",
   marginBottom: "24px",
+  lineHeight: 1.5,
 };
 
 const settingsRow = {
@@ -973,25 +1064,31 @@ const fieldLabel = {
   display: "flex",
   flexDirection: "column",
   gap: "8px",
-  color: "#e2e8f0",
-  fontWeight: 700,
+  color: "#8ab4c4",
+  fontWeight: 600,
+  fontSize: "0.85rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px",
 };
 
 const smallInput = {
-  padding: "12px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#0f172a",
-  color: "white",
+  padding: "12px 14px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.2)",
+  background: "rgba(0,0,0,0.4)",
+  color: "#e8f4f8",
   fontSize: "1rem",
+  fontFamily: "'Inter', sans-serif",
+  outline: "none",
 };
 
 const fileInput = {
-  padding: "12px",
-  borderRadius: "6px",
-  border: "1px dashed #38bdf8",
-  background: "#0f172a",
-  color: "white",
+  padding: "12px 14px",
+  borderRadius: "10px",
+  border: "1px dashed rgba(0,245,255,0.35)",
+  background: "rgba(0,245,255,0.03)",
+  color: "#8ab4c4",
+  cursor: "pointer",
 };
 
 const pdfNotice = {
@@ -999,33 +1096,38 @@ const pdfNotice = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "12px",
-  padding: "12px",
-  borderRadius: "6px",
-  background: "#082f49",
-  border: "1px solid #0369a1",
+  padding: "12px 16px",
+  borderRadius: "10px",
+  background: "rgba(0,245,255,0.05)",
+  border: "1px solid rgba(0,245,255,0.2)",
   margin: "14px 0",
   flexWrap: "wrap",
+  color: "#8ab4c4",
 };
 
 const miniButton = {
-  padding: "8px 10px",
-  borderRadius: "6px",
-  border: "1px solid #7dd3fc",
+  padding: "8px 12px",
+  borderRadius: "8px",
+  border: "1px solid rgba(0,245,255,0.3)",
   background: "transparent",
-  color: "white",
+  color: "#00f5ff",
   cursor: "pointer",
+  fontSize: "0.85rem",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const textarea = {
   minHeight: "260px",
   resize: "vertical",
-  padding: "14px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#0f172a",
-  color: "white",
-  fontSize: "1rem",
-  lineHeight: 1.5,
+  padding: "14px 16px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.15)",
+  background: "rgba(0,0,0,0.4)",
+  color: "#e8f4f8",
+  fontSize: "0.95rem",
+  lineHeight: 1.6,
+  fontFamily: "'Inter', sans-serif",
+  outline: "none",
 };
 
 const monitorToggle = {
@@ -1033,23 +1135,26 @@ const monitorToggle = {
   alignItems: "center",
   gap: "10px",
   marginTop: "16px",
-  color: "#e2e8f0",
-  fontWeight: 700,
+  color: "#8ab4c4",
+  fontWeight: 600,
+  fontSize: "0.9rem",
+  cursor: "pointer",
 };
 
 const monitorPanel = {
   display: "grid",
   gap: "6px",
   marginTop: "12px",
-  padding: "14px",
-  borderRadius: "8px",
-  border: "1px solid #334155",
-  background: "#0f172a",
-  color: "#cbd5e1",
+  padding: "14px 16px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.1)",
+  background: "rgba(0,0,0,0.3)",
+  color: "#8ab4c4",
+  fontSize: "0.9rem",
 };
 
 const monitorWarning = {
-  color: "#fecaca",
+  color: "#ff006e",
   fontWeight: 700,
 };
 
@@ -1063,7 +1168,9 @@ const footerRow = {
 };
 
 const wordCounter = {
-  color: "#94a3b8",
+  color: "#4a6070",
+  fontSize: "0.9rem",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const activeActions = {
@@ -1074,58 +1181,86 @@ const activeActions = {
 };
 
 const activeStudyText = {
-  color: "#bfdbfe",
-  fontWeight: 700,
+  color: "#00f5ff",
+  fontWeight: 600,
+  fontSize: "0.9rem",
 };
 
 const donePanel = {
   marginTop: "20px",
-  padding: "18px",
-  borderRadius: "8px",
-  background: "#0f172a",
-  border: "1px solid #38bdf8",
+  padding: "20px",
+  borderRadius: "12px",
+  background: "rgba(0,245,255,0.04)",
+  border: "1px solid rgba(0,245,255,0.3)",
+  boxShadow: "0 0 20px rgba(0,245,255,0.08)",
 };
 
 const doneTitle = {
   margin: "0 0 8px",
+  color: "#e8f4f8",
+  fontSize: "1.2rem",
 };
 
 const primaryButton = {
-  padding: "12px 18px",
-  borderRadius: "6px",
-  border: "none",
-  background: "#2563eb",
-  color: "white",
+  padding: "12px 22px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.4)",
+  background: "linear-gradient(135deg, rgba(0,245,255,0.15), rgba(0,245,255,0.05))",
+  color: "#00f5ff",
+  fontFamily: "'Inter', sans-serif",
   fontWeight: 700,
   cursor: "pointer",
+  fontSize: "0.95rem",
+  boxShadow: "0 0 16px rgba(0,245,255,0.2)",
+  transition: "all 0.2s ease",
+  letterSpacing: "0.3px",
 };
 
 const dangerButton = {
-  ...primaryButton,
-  background: "#b91c1c",
+  padding: "12px 22px",
+  borderRadius: "10px",
+  border: "1px solid rgba(255,0,110,0.4)",
+  background: "rgba(255,0,110,0.1)",
+  color: "#ff006e",
+  fontFamily: "'Inter', sans-serif",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontSize: "0.95rem",
+  transition: "all 0.2s ease",
 };
 
 const secondaryButton = {
-  padding: "10px 14px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#1e293b",
-  color: "white",
+  padding: "10px 16px",
+  borderRadius: "8px",
+  border: "1px solid rgba(0,245,255,0.2)",
+  background: "transparent",
+  color: "#8ab4c4",
+  fontFamily: "'Inter', sans-serif",
   cursor: "pointer",
+  fontSize: "0.9rem",
+  transition: "all 0.2s ease",
 };
 
 const logoutButton = {
-  ...secondaryButton,
-  background: "#7f1d1d",
+  padding: "10px 16px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,0,110,0.3)",
+  background: "rgba(255,0,110,0.08)",
+  color: "#ff006e",
+  fontFamily: "'Inter', sans-serif",
+  cursor: "pointer",
+  fontSize: "0.9rem",
+  transition: "all 0.2s ease",
 };
 
 const errorText = {
   marginTop: "16px",
-  color: "#fecaca",
-  background: "#7f1d1d",
-  border: "1px solid #ef4444",
-  padding: "12px",
-  borderRadius: "6px",
+  color: "#ff006e",
+  background: "rgba(255,0,110,0.08)",
+  border: "1px solid rgba(255,0,110,0.3)",
+  padding: "12px 16px",
+  borderRadius: "10px",
+  fontSize: "0.9rem",
 };
 
 export default StartSession;

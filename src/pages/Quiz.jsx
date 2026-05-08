@@ -253,46 +253,46 @@ function Quiz({
         <h1 style={emptyTitle}>No quiz loaded</h1>
         <p style={emptyText}>Start a study session first to generate questions.</p>
         <div style={emptyActions}>
-          <button onClick={() => setPage("home")} style={secondaryButton}>
-            Home
-          </button>
-          <button onClick={() => setPage("start")} style={primaryButton}>
-            Start Session
-          </button>
-          <button onClick={onLogout} style={logoutButton}>
-            Logout
-          </button>
+          <button onClick={() => setPage("home")} style={secondaryButton}>Home</button>
+          <button onClick={() => setPage("start")} style={primaryButton}>Start Session</button>
+          <button onClick={onLogout} style={logoutButton}>Logout</button>
         </div>
       </div>
     );
   }
+
+  const timerDanger = timeLeft <= 60;
 
   return (
     <div style={container}>
       <div style={topBar}>
         <div style={navActions}>
           {compulsoryQuiz ? (
-            <span style={compulsoryBadge}>Compulsory quiz</span>
+            <span style={compulsoryBadge}>⚠ Compulsory Quiz</span>
           ) : (
             <>
-              <button onClick={() => setPage("home")} style={secondaryButton}>
-                Home
-              </button>
-              <button onClick={() => setPage("start")} style={secondaryButton}>
-                Back
-              </button>
-              <button onClick={onLogout} style={logoutButton}>
-                Logout
-              </button>
+              <button onClick={() => setPage("home")} style={secondaryButton}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(0,245,255,0.5)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(0,245,255,0.2)"; }}
+              >← Home</button>
+              <button onClick={() => setPage("start")} style={secondaryButton}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(0,245,255,0.5)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(0,245,255,0.2)"; }}
+              >Back</button>
+              <button onClick={onLogout} style={logoutButton}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,0,110,0.15)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,0,110,0.08)"; }}
+              >Logout</button>
             </>
           )}
         </div>
         <div style={headerMeta}>
-          <strong>{quiz.topic}</strong>
-          <span style={timeLeft <= 60 ? dangerTimer : timerBadge}>
-            Quiz Timer {formatTime(timeLeft)}
-          </span>
-          <span>{answeredCount} / {quiz.questions.length} answered</span>
+          <strong style={{ color: "#e8f4f8", fontFamily: "'Inter', sans-serif" }}>{quiz.topic}</strong>
+          <span style={answeredBadge}>{answeredCount} / {quiz.questions.length} answered</span>
+        </div>
+        <div style={timerDanger ? timerBadgeDanger : timerBadge}>
+          <span style={timerLabel}>QUIZ TIMER</span>
+          <span style={timerDanger ? timerValueDanger : timerValue}>{formatTime(timeLeft)}</span>
         </div>
       </div>
 
@@ -326,11 +326,12 @@ function Quiz({
                       onClick={() => handleAnswer(question.id, option)}
                       style={{
                         ...optionButton,
-                        borderColor: selected ? "#38bdf8" : "#334155",
-                        background: selected ? "#0e7490" : "#0f172a",
+                        borderColor: selected ? "rgba(0,245,255,0.6)" : "rgba(0,245,255,0.12)",
+                        background: selected ? "rgba(0,245,255,0.12)" : "rgba(0,0,0,0.3)",
+                        boxShadow: selected ? "0 0 12px rgba(0,245,255,0.15)" : "none",
                       }}
                     >
-                      <strong>{option}</strong>
+                      <strong style={{ color: selected ? "#00f5ff" : "#8ab4c4", minWidth: "18px" }}>{option}</strong>
                       <span>{label}</span>
                     </button>
                   );
@@ -361,43 +362,47 @@ function Quiz({
 
 const container = {
   minHeight: "100vh",
-  background: "#0f172a",
-  color: "white",
-  fontFamily: "Arial, sans-serif",
+  width: "100%",
+  background: "linear-gradient(160deg, #020408 0%, #080c14 60%, #0a0818 100%)",
+  color: "#e8f4f8",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const emptyContainer = {
   minHeight: "100vh",
-  background: "#0f172a",
-  color: "white",
+  width: "100%",
+  background: "linear-gradient(160deg, #020408 0%, #080c14 60%, #0a0818 100%)",
+  color: "#e8f4f8",
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  gap: "12px",
-  fontFamily: "Arial, sans-serif",
+  gap: "16px",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const emptyTitle = {
   margin: 0,
-  color: "white",
+  color: "#e8f4f8",
+  fontFamily: "'Orbitron', monospace",
+  fontSize: "1.5rem",
 };
 
-const emptyText = {
-  color: "#cbd5e1",
-};
+const emptyText = { color: "#8ab4c4" };
 
 const topBar = {
   position: "sticky",
   top: 0,
-  zIndex: 2,
+  zIndex: 10,
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: "16px",
-  padding: "16px 28px",
-  background: "#111827",
-  borderBottom: "1px solid #334155",
+  padding: "14px 28px",
+  background: "rgba(8,12,20,0.92)",
+  backdropFilter: "blur(12px)",
+  borderBottom: "1px solid rgba(0,245,255,0.1)",
+  flexWrap: "wrap",
 };
 
 const navActions = {
@@ -409,74 +414,114 @@ const navActions = {
 
 const headerMeta = {
   display: "flex",
-  gap: "16px",
-  color: "#cbd5e1",
+  gap: "12px",
+  color: "#8ab4c4",
   alignItems: "center",
   flexWrap: "wrap",
 };
 
+const answeredBadge = {
+  padding: "4px 10px",
+  borderRadius: "20px",
+  background: "rgba(191,0,255,0.1)",
+  border: "1px solid rgba(191,0,255,0.3)",
+  color: "#bf00ff",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+};
+
 const compulsoryBadge = {
-  color: "#fecaca",
-  background: "#7f1d1d",
-  border: "1px solid #ef4444",
+  color: "#ff006e",
+  background: "rgba(255,0,110,0.1)",
+  border: "1px solid rgba(255,0,110,0.35)",
   borderRadius: "999px",
-  padding: "8px 12px",
+  padding: "8px 14px",
   fontWeight: 700,
+  fontSize: "0.9rem",
 };
 
 const timerBadge = {
-  color: "#bfdbfe",
-  background: "#0f172a",
-  border: "1px solid #38bdf8",
-  borderRadius: "999px",
-  padding: "7px 10px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  padding: "10px 20px",
+  borderRadius: "14px",
+  background: "rgba(0,245,255,0.05)",
+  border: "1px solid rgba(0,245,255,0.4)",
+  gap: "2px",
+  boxShadow: "0 0 20px rgba(0,245,255,0.12)",
+  animation: "pulse-glow 2s ease-in-out infinite",
+};
+
+const timerBadgeDanger = {
+  ...timerBadge,
+  border: "1px solid rgba(255,0,110,0.5)",
+  background: "rgba(255,0,110,0.06)",
+  boxShadow: "0 0 20px rgba(255,0,110,0.2)",
+  animation: "none",
+};
+
+const timerLabel = {
+  fontSize: "0.6rem",
+  fontFamily: "'Orbitron', monospace",
+  color: "#8ab4c4",
+  letterSpacing: "2px",
   fontWeight: 700,
 };
 
-const dangerTimer = {
-  ...timerBadge,
-  color: "#fecaca",
-  borderColor: "#ef4444",
+const timerValue = {
+  fontSize: "2rem",
+  fontFamily: "'Orbitron', monospace",
+  fontWeight: 900,
+  color: "#00f5ff",
+  textShadow: "0 0 15px rgba(0,245,255,0.6), 0 0 40px rgba(0,245,255,0.3)",
+  letterSpacing: "3px",
+  animation: "timer-pulse 2s ease-in-out infinite",
+  lineHeight: 1,
 };
 
-const emptyActions = {
-  display: "flex",
-  gap: "10px",
+const timerValueDanger = {
+  ...timerValue,
+  color: "#ff006e",
+  textShadow: "0 0 15px rgba(255,0,110,0.7), 0 0 40px rgba(255,0,110,0.4)",
+  animation: "timer-danger 0.8s ease-in-out infinite",
 };
+
+const emptyActions = { display: "flex", gap: "10px" };
 
 const main = {
   width: "min(1040px, calc(100% - 32px))",
   margin: "0 auto",
-  padding: "32px 0",
+  padding: "32px 0 48px",
 };
 
-const intro = {
-  textAlign: "left",
-  marginBottom: "24px",
-};
+const intro = { textAlign: "left", marginBottom: "24px" };
 
 const eyebrow = {
-  color: "#38bdf8",
+  color: "#00f5ff",
   fontWeight: 700,
   textTransform: "uppercase",
+  fontSize: "0.75rem",
+  letterSpacing: "3px",
+  fontFamily: "'Orbitron', monospace",
 };
 
 const title = {
-  margin: "6px 0 0",
-  color: "white",
-  fontSize: "2rem",
+  margin: "8px 0 0",
+  color: "#e8f4f8",
+  fontSize: "1.8rem",
+  fontFamily: "'Inter', sans-serif",
+  fontWeight: 700,
 };
 
-const questionList = {
-  display: "grid",
-  gap: "18px",
-};
+const questionList = { display: "grid", gap: "18px" };
 
 const questionCard = {
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "8px",
-  padding: "22px",
+  background: "rgba(13,20,36,0.85)",
+  backdropFilter: "blur(10px)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "16px",
+  padding: "24px",
   textAlign: "left",
 };
 
@@ -484,47 +529,52 @@ const questionHeader = {
   display: "flex",
   justifyContent: "space-between",
   gap: "12px",
-  marginBottom: "12px",
+  marginBottom: "14px",
 };
 
 const pill = {
-  color: "#bfdbfe",
-  background: "#1d4ed8",
+  color: "#00f5ff",
+  background: "rgba(0,245,255,0.1)",
+  border: "1px solid rgba(0,245,255,0.25)",
   borderRadius: "999px",
-  padding: "4px 10px",
-  fontSize: "0.8rem",
+  padding: "4px 12px",
+  fontSize: "0.75rem",
   textTransform: "uppercase",
+  letterSpacing: "1px",
+  fontWeight: 700,
 };
 
-const points = {
-  color: "#94a3b8",
-};
+const points = { color: "#4a6070", fontSize: "0.85rem" };
 
 const questionText = {
-  color: "white",
-  fontSize: "1.1rem",
-  lineHeight: 1.4,
-  margin: "0 0 16px",
+  color: "#e8f4f8",
+  fontSize: "1.05rem",
+  lineHeight: 1.5,
+  margin: "0 0 18px",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const optionsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-  gap: "12px",
+  gap: "10px",
 };
 
 const optionButton = {
   display: "flex",
-  gap: "10px",
+  gap: "12px",
   alignItems: "flex-start",
-  minHeight: "68px",
-  padding: "14px",
-  border: "1px solid #334155",
-  borderRadius: "6px",
-  color: "white",
+  minHeight: "60px",
+  padding: "14px 16px",
+  border: "1px solid rgba(0,245,255,0.12)",
+  borderRadius: "10px",
+  color: "#e8f4f8",
+  background: "rgba(0,0,0,0.3)",
   textAlign: "left",
   cursor: "pointer",
   lineHeight: 1.35,
+  transition: "all 0.2s ease",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const submitBar = {
@@ -532,48 +582,63 @@ const submitBar = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "16px",
-  marginTop: "24px",
-  padding: "18px",
-  background: "#111827",
-  border: "1px solid #334155",
-  borderRadius: "8px",
+  marginTop: "28px",
+  padding: "20px 24px",
+  background: "rgba(8,12,20,0.85)",
+  backdropFilter: "blur(10px)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "14px",
 };
 
-const hint = {
-  color: "#94a3b8",
-};
+const hint = { color: "#4a6070", fontSize: "0.9rem" };
 
 const primaryButton = {
-  padding: "12px 18px",
-  borderRadius: "6px",
-  border: "none",
-  background: "#2563eb",
-  color: "white",
+  padding: "12px 24px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.4)",
+  background: "linear-gradient(135deg, rgba(0,245,255,0.15), rgba(0,245,255,0.05))",
+  color: "#00f5ff",
+  fontFamily: "'Inter', sans-serif",
   fontWeight: 700,
   cursor: "pointer",
+  fontSize: "0.95rem",
+  boxShadow: "0 0 16px rgba(0,245,255,0.2)",
+  transition: "all 0.2s ease",
 };
 
 const secondaryButton = {
-  padding: "10px 14px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#1e293b",
-  color: "white",
+  padding: "10px 16px",
+  borderRadius: "8px",
+  border: "1px solid rgba(0,245,255,0.2)",
+  background: "transparent",
+  color: "#8ab4c4",
+  fontFamily: "'Inter', sans-serif",
   cursor: "pointer",
+  fontSize: "0.9rem",
+  transition: "all 0.2s ease",
 };
 
 const logoutButton = {
-  ...secondaryButton,
-  background: "#7f1d1d",
+  padding: "10px 16px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,0,110,0.3)",
+  background: "rgba(255,0,110,0.08)",
+  color: "#ff006e",
+  fontFamily: "'Inter', sans-serif",
+  cursor: "pointer",
+  fontSize: "0.9rem",
+  transition: "all 0.2s ease",
 };
 
 const errorText = {
-  color: "#fecaca",
-  background: "#7f1d1d",
-  border: "1px solid #ef4444",
-  padding: "12px",
-  borderRadius: "6px",
+  color: "#ff006e",
+  background: "rgba(255,0,110,0.08)",
+  border: "1px solid rgba(255,0,110,0.3)",
+  padding: "12px 16px",
+  borderRadius: "10px",
   textAlign: "left",
+  fontSize: "0.9rem",
+  marginTop: "16px",
 };
 
 export default Quiz;

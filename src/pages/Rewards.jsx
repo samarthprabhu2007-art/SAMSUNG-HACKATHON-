@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useRef } from "react";
 
@@ -325,20 +325,22 @@ function Rewards({ setPage, gradeResult, rewardResult, sessionInfo, onLogout }) 
 
 const container = {
   minHeight: "100vh",
-  background: "#0f172a",
-  color: "white",
+  width: "100%",
+  background: "linear-gradient(160deg, #020408 0%, #080c14 60%, #0a0818 100%)",
+  color: "#e8f4f8",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   padding: "32px 16px",
-  fontFamily: "Arial, sans-serif",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const panel = {
   width: "min(860px, 100%)",
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "8px",
+  background: "rgba(13,20,36,0.9)",
+  backdropFilter: "blur(20px)",
+  border: "1px solid rgba(0,245,255,0.15)",
+  borderRadius: "20px",
   padding: "32px",
 };
 
@@ -351,29 +353,36 @@ const navRow = {
 
 const eyebrow = {
   margin: 0,
-  color: "#38bdf8",
+  color: "#00f5ff",
   fontWeight: 700,
   textTransform: "uppercase",
+  fontSize: "0.75rem",
+  letterSpacing: "3px",
+  fontFamily: "'Orbitron', monospace",
 };
 
 const title = {
   margin: "8px 0",
-  color: "white",
+  color: "#e8f4f8",
   fontSize: "2.2rem",
+  fontFamily: "'Inter', sans-serif",
+  fontWeight: 700,
 };
 
 const message = {
-  color: "#dbeafe",
-  background: "#0f172a",
-  border: "1px solid #334155",
-  borderRadius: "6px",
-  padding: "14px",
-  lineHeight: 1.45,
+  color: "#8ab4c4",
+  background: "rgba(0,0,0,0.3)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "12px",
+  padding: "14px 16px",
+  lineHeight: 1.5,
+  fontSize: "0.95rem",
 };
 
 const muted = {
-  color: "#cbd5e1",
+  color: "#8ab4c4",
   marginBottom: "18px",
+  fontSize: "0.9rem",
 };
 
 const statsGrid = {
@@ -384,78 +393,98 @@ const statsGrid = {
 };
 
 const statBox = {
-  background: "#0f172a",
-  border: "1px solid #334155",
-  borderRadius: "6px",
+  background: "rgba(0,0,0,0.3)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "12px",
   padding: "16px",
+  textAlign: "center",
 };
 
 const label = {
   display: "block",
-  color: "#94a3b8",
-  fontSize: "0.85rem",
-  marginBottom: "6px",
+  color: "#4a6070",
+  fontSize: "0.75rem",
+  marginBottom: "8px",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+  fontWeight: 700,
 };
 
 const value = {
-  fontSize: "1.4rem",
+  fontSize: "1.6rem",
+  fontFamily: "'Orbitron', monospace",
+  fontWeight: 700,
+  color: "#00f5ff",
+  textShadow: "0 0 10px rgba(0,245,255,0.4)",
 };
 
 const breakdown = {
   display: "grid",
   gap: "8px",
-  color: "#cbd5e1",
+  color: "#8ab4c4",
   textAlign: "left",
+  fontSize: "0.9rem",
 };
 
 const breakPanel = {
   marginTop: "24px",
-  padding: "20px",
-  borderRadius: "10px",
-  background: "#0f172a",
-  border: "1px solid #334155",
+  padding: "24px",
+  borderRadius: "14px",
+  background: "rgba(0,245,255,0.03)",
+  border: "1px solid rgba(0,245,255,0.15)",
 };
 
 const breakTitle = {
   margin: "8px 0",
+  color: "#e8f4f8",
+  fontSize: "1.2rem",
+  fontFamily: "'Orbitron', monospace",
 };
 
 const fieldLabel = {
   display: "flex",
   flexDirection: "column",
   gap: "8px",
-  color: "#e2e8f0",
-  fontWeight: 700,
+  color: "#8ab4c4",
+  fontWeight: 600,
+  fontSize: "0.85rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px",
 };
 
 const input = {
-  padding: "12px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#111827",
-  color: "white",
+  padding: "12px 14px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.2)",
+  background: "rgba(0,0,0,0.4)",
+  color: "#e8f4f8",
   fontSize: "1rem",
+  fontFamily: "'Inter', sans-serif",
+  outline: "none",
 };
 
 const timerBox = {
   marginTop: "18px",
-  padding: "20px",
-  borderRadius: "10px",
-  background: "#082f49",
-  border: "1px solid #38bdf8",
+  padding: "24px",
+  borderRadius: "14px",
+  background: "rgba(0,245,255,0.04)",
+  border: "1px solid rgba(0,245,255,0.3)",
   textAlign: "center",
+  boxShadow: "0 0 30px rgba(0,245,255,0.08)",
 };
 
 const confirmBox = {
   marginTop: "18px",
-  padding: "18px",
-  borderRadius: "10px",
-  background: "#111827",
-  border: "1px solid #38bdf8",
+  padding: "20px",
+  borderRadius: "14px",
+  background: "rgba(0,0,0,0.3)",
+  border: "1px solid rgba(0,245,255,0.2)",
 };
 
 const confirmTitle = {
-  margin: "0 0 8px",
+  margin: "0 0 10px",
+  color: "#e8f4f8",
+  fontSize: "1.1rem",
 };
 
 const confirmActions = {
@@ -466,8 +495,14 @@ const confirmActions = {
 
 const timerValue = {
   display: "block",
-  fontSize: "3rem",
-  color: "#bfdbfe",
+  fontSize: "4rem",
+  fontFamily: "'Orbitron', monospace",
+  fontWeight: 900,
+  color: "#00f5ff",
+  textShadow: "0 0 20px rgba(0,245,255,0.7), 0 0 60px rgba(0,245,255,0.3)",
+  animation: "timer-pulse 2s ease-in-out infinite",
+  letterSpacing: "4px",
+  lineHeight: 1.1,
 };
 
 const quickGrid = {
@@ -479,11 +514,15 @@ const quickGrid = {
 
 const breakButton = {
   padding: "16px",
-  borderRadius: "8px",
-  border: "1px solid #38bdf8",
-  background: "#082f49",
-  color: "white",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.3)",
+  background: "rgba(0,245,255,0.06)",
+  color: "#00f5ff",
   fontWeight: 700,
+  fontFamily: "'Orbitron', monospace",
+  fontSize: "0.85rem",
+  letterSpacing: "1px",
+  transition: "all 0.2s ease",
 };
 
 const customRow = {
@@ -502,36 +541,51 @@ const actions = {
 };
 
 const primaryButton = {
-  padding: "12px 18px",
-  borderRadius: "6px",
-  border: "none",
-  background: "#2563eb",
-  color: "white",
+  padding: "12px 20px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.4)",
+  background: "linear-gradient(135deg, rgba(0,245,255,0.15), rgba(0,245,255,0.05))",
+  color: "#00f5ff",
+  fontFamily: "'Inter', sans-serif",
   fontWeight: 700,
   cursor: "pointer",
+  fontSize: "0.95rem",
+  boxShadow: "0 0 16px rgba(0,245,255,0.2)",
+  transition: "all 0.2s ease",
 };
 
 const secondaryButton = {
-  padding: "12px 18px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#1e293b",
-  color: "white",
+  padding: "12px 20px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.2)",
+  background: "transparent",
+  color: "#8ab4c4",
+  fontFamily: "'Inter', sans-serif",
   cursor: "pointer",
+  fontSize: "0.95rem",
+  transition: "all 0.2s ease",
 };
 
 const logoutButton = {
-  ...secondaryButton,
-  background: "#7f1d1d",
+  padding: "10px 16px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,0,110,0.3)",
+  background: "rgba(255,0,110,0.08)",
+  color: "#ff006e",
+  fontFamily: "'Inter', sans-serif",
+  cursor: "pointer",
+  fontSize: "0.9rem",
+  transition: "all 0.2s ease",
 };
 
 const errorText = {
   marginTop: "16px",
-  color: "#fecaca",
-  background: "#7f1d1d",
-  border: "1px solid #ef4444",
-  padding: "12px",
-  borderRadius: "6px",
+  color: "#ff006e",
+  background: "rgba(255,0,110,0.08)",
+  border: "1px solid rgba(255,0,110,0.3)",
+  padding: "12px 16px",
+  borderRadius: "10px",
+  fontSize: "0.9rem",
 };
 
 export default Rewards;

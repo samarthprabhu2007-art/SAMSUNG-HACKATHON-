@@ -315,22 +315,33 @@ function Progress({ setPage, currentUser, onLogout }) {
 
 const container = {
   minHeight: "100vh",
-  background: "#0f172a",
-  color: "white",
-  fontFamily: "Arial, sans-serif",
+  width: "100%",
+  background: "linear-gradient(160deg, #020408 0%, #080c14 60%, #0a0818 100%)",
+  color: "#e8f4f8",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const topBar = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  padding: "16px 28px",
-  background: "#111827",
-  borderBottom: "1px solid #334155",
+  padding: "14px 28px",
+  background: "rgba(8,12,20,0.9)",
+  backdropFilter: "blur(12px)",
+  borderBottom: "1px solid rgba(0,245,255,0.1)",
+  position: "sticky",
+  top: 0,
+  zIndex: 10,
 };
 
 const brand = {
+  fontFamily: "'Orbitron', monospace",
+  fontSize: "1rem",
   fontWeight: 700,
+  background: "linear-gradient(135deg, #00f5ff, #bf00ff)",
+  WebkitBackgroundClip: "text",
+  WebkitTextFillColor: "transparent",
+  backgroundClip: "text",
 };
 
 const navActions = {
@@ -342,7 +353,7 @@ const navActions = {
 const main = {
   width: "min(1100px, calc(100% - 32px))",
   margin: "0 auto",
-  padding: "32px 0",
+  padding: "32px 0 48px",
 };
 
 const hero = {
@@ -350,35 +361,45 @@ const hero = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "18px",
-  marginBottom: "22px",
+  marginBottom: "24px",
 };
 
 const eyebrow = {
   margin: 0,
-  color: "#38bdf8",
-  fontSize: "0.85rem",
+  color: "#00f5ff",
+  fontSize: "0.7rem",
   fontWeight: 700,
   textTransform: "uppercase",
+  letterSpacing: "4px",
+  fontFamily: "'Orbitron', monospace",
 };
 
 const title = {
   margin: "8px 0 0",
-  fontSize: "2rem",
+  fontSize: "1.8rem",
+  fontFamily: "'Inter', sans-serif",
+  fontWeight: 700,
+  color: "#e8f4f8",
 };
 
 const epBadge = {
   minWidth: "150px",
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "8px",
+  background: "rgba(0,245,255,0.05)",
+  border: "1px solid rgba(0,245,255,0.3)",
+  borderRadius: "14px",
   padding: "16px",
   textAlign: "center",
+  boxShadow: "0 0 20px rgba(0,245,255,0.1)",
 };
 
 const epValue = {
   display: "block",
-  fontSize: "2rem",
+  fontSize: "2.5rem",
   marginTop: "4px",
+  fontFamily: "'Orbitron', monospace",
+  fontWeight: 900,
+  color: "#00f5ff",
+  textShadow: "0 0 15px rgba(0,245,255,0.5)",
 };
 
 const statsGrid = {
@@ -389,21 +410,28 @@ const statsGrid = {
 };
 
 const statBox = {
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "8px",
-  padding: "16px",
+  background: "rgba(13,20,36,0.8)",
+  backdropFilter: "blur(10px)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "12px",
+  padding: "18px",
 };
 
 const label = {
   display: "block",
-  color: "#94a3b8",
-  fontSize: "0.85rem",
-  marginBottom: "6px",
+  color: "#4a6070",
+  fontSize: "0.75rem",
+  marginBottom: "8px",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+  fontWeight: 700,
 };
 
 const value = {
-  fontSize: "1.45rem",
+  fontSize: "1.6rem",
+  fontFamily: "'Orbitron', monospace",
+  fontWeight: 700,
+  color: "#e8f4f8",
 };
 
 const dashboardGrid = {
@@ -414,15 +442,20 @@ const dashboardGrid = {
 };
 
 const panel = {
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "8px",
-  padding: "20px",
+  background: "rgba(13,20,36,0.8)",
+  backdropFilter: "blur(10px)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "14px",
+  padding: "22px",
 };
 
 const sectionTitle = {
   margin: "0 0 16px",
-  fontSize: "1.15rem",
+  fontSize: "1rem",
+  fontFamily: "'Orbitron', monospace",
+  fontWeight: 700,
+  color: "#00f5ff",
+  letterSpacing: "1px",
 };
 
 const barChart = {
@@ -443,8 +476,8 @@ const barColumn = {
 const barTrack = {
   width: "100%",
   height: "180px",
-  background: "#0f172a",
-  border: "1px solid #334155",
+  background: "rgba(0,0,0,0.4)",
+  border: "1px solid rgba(0,245,255,0.1)",
   borderRadius: "6px",
   display: "flex",
   alignItems: "flex-end",
@@ -453,12 +486,14 @@ const barTrack = {
 
 const barFill = {
   width: "100%",
-  background: "#38bdf8",
+  background: "linear-gradient(180deg, #00f5ff, rgba(0,245,255,0.4))",
+  boxShadow: "0 0 10px rgba(0,245,255,0.4)",
 };
 
 const barLabel = {
-  color: "#94a3b8",
+  color: "#4a6070",
   fontSize: "0.8rem",
+  fontFamily: "'Orbitron', monospace",
 };
 
 const weakList = {
@@ -476,20 +511,22 @@ const topicRow = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "12px",
-  padding: "12px",
-  background: "#0f172a",
-  border: "1px solid #334155",
-  borderRadius: "6px",
+  padding: "12px 14px",
+  background: "rgba(0,0,0,0.3)",
+  border: "1px solid rgba(0,245,255,0.08)",
+  borderRadius: "10px",
 };
 
 const strongScore = {
-  color: "#86efac",
+  color: "#39ff14",
   fontWeight: 700,
+  textShadow: "0 0 8px rgba(57,255,20,0.4)",
 };
 
 const weakScore = {
-  color: "#fecaca",
+  color: "#ff006e",
   fontWeight: 700,
+  textShadow: "0 0 8px rgba(255,0,110,0.4)",
 };
 
 const weakHeader = {
@@ -501,12 +538,13 @@ const weakHeader = {
 const tierName = {
   textTransform: "capitalize",
   fontWeight: 700,
+  color: "#e8f4f8",
 };
 
 const meter = {
-  height: "12px",
-  background: "#0f172a",
-  border: "1px solid #334155",
+  height: "10px",
+  background: "rgba(0,0,0,0.4)",
+  border: "1px solid rgba(0,245,255,0.1)",
   borderRadius: "999px",
   overflow: "hidden",
 };
@@ -524,8 +562,11 @@ const tableHeader = {
   display: "grid",
   gridTemplateColumns: "2fr 1fr 1fr 1fr",
   gap: "12px",
-  color: "#94a3b8",
-  fontSize: "0.85rem",
+  color: "#4a6070",
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+  fontFamily: "'Orbitron', monospace",
 };
 
 const tableRow = {
@@ -533,56 +574,79 @@ const tableRow = {
   gridTemplateColumns: "2fr 1fr 1fr 1fr",
   gap: "12px",
   alignItems: "center",
-  padding: "12px",
-  background: "#0f172a",
-  border: "1px solid #334155",
-  borderRadius: "6px",
+  padding: "12px 14px",
+  background: "rgba(0,0,0,0.3)",
+  border: "1px solid rgba(0,245,255,0.08)",
+  borderRadius: "10px",
+  transition: "border-color 0.2s",
 };
 
 const dateText = {
   display: "block",
-  color: "#94a3b8",
+  color: "#4a6070",
   marginTop: "4px",
+  fontSize: "0.8rem",
 };
 
 const emptyState = {
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: "8px",
-  padding: "28px",
+  background: "rgba(13,20,36,0.8)",
+  backdropFilter: "blur(10px)",
+  border: "1px solid rgba(0,245,255,0.1)",
+  borderRadius: "14px",
+  padding: "40px",
   textAlign: "center",
 };
 
 const emptyTitle = {
   margin: 0,
+  fontFamily: "'Orbitron', monospace",
+  fontSize: "1.2rem",
+  color: "#e8f4f8",
 };
 
 const muted = {
-  color: "#94a3b8",
+  color: "#4a6070",
+  marginTop: "10px",
+  fontSize: "0.9rem",
 };
 
 const primaryButton = {
-  padding: "12px 18px",
-  borderRadius: "6px",
-  border: "none",
-  background: "#2563eb",
-  color: "white",
+  padding: "12px 22px",
+  borderRadius: "10px",
+  border: "1px solid rgba(0,245,255,0.4)",
+  background: "linear-gradient(135deg, rgba(0,245,255,0.15), rgba(0,245,255,0.05))",
+  color: "#00f5ff",
+  fontFamily: "'Inter', sans-serif",
   fontWeight: 700,
   cursor: "pointer",
+  fontSize: "0.95rem",
+  boxShadow: "0 0 16px rgba(0,245,255,0.2)",
+  marginTop: "20px",
+  transition: "all 0.2s ease",
 };
 
 const secondaryButton = {
-  padding: "10px 14px",
-  borderRadius: "6px",
-  border: "1px solid #475569",
-  background: "#1e293b",
-  color: "white",
+  padding: "10px 16px",
+  borderRadius: "8px",
+  border: "1px solid rgba(0,245,255,0.2)",
+  background: "transparent",
+  color: "#8ab4c4",
+  fontFamily: "'Inter', sans-serif",
   cursor: "pointer",
+  fontSize: "0.9rem",
+  transition: "all 0.2s ease",
 };
 
 const logoutButton = {
-  ...secondaryButton,
-  background: "#7f1d1d",
+  padding: "10px 16px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,0,110,0.3)",
+  background: "rgba(255,0,110,0.08)",
+  color: "#ff006e",
+  fontFamily: "'Inter', sans-serif",
+  cursor: "pointer",
+  fontSize: "0.9rem",
+  transition: "all 0.2s ease",
 };
 
 export default Progress;
